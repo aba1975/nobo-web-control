@@ -6,8 +6,10 @@ FastAPI backend for local control of Nobø heating system via pynobo library
 import os
 import asyncio
 import logging
+import threading
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -30,12 +32,46 @@ NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP 
 
 # ========================
 
-app = FastAPI(title="Nobø Web Control", version="1.0.0")
-
 # Global variables
 hub: Optional[pynobo.nobo] = None
 connected_websockets: List[WebSocket] = []
 hub_connected = False
+hub_thread: Optional[threading.Thread] = None
+
+
+# ===== Lifespan Context Manager =====
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    # Startup
+    logger.info("Starting Nobø Web Control Server...")
+    try:
+        await connect_to_hub()
+    except Exception as e:
+        logger.error(f"Failed to connect to hub on startup: {e}")
+        # Don't fail startup - allow server to run and show disconnected state
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down server...")
+    # Close all websocket connections
+    for ws in connected_websockets:
+        try:
+            await ws.close()
+        except:
+            pass
+    connected_websockets.clear()
+    
+    # Disconnect from hub
+    if hub:
+        try:
+            hub.stop()
+        except:
+            pass
+
+
+app = FastAPI(title="Nobø Web Control", version="1.0.0", lifespan=lifespan)
 
 
 # ===== Pydantic Models =====
@@ -55,8 +91,8 @@ class ZoneInfo(BaseModel):
 
 
 # ===== Hub Connection & Callbacks =====
-async def connect_to_hub():
-    """Connect to the Nobø Hub"""
+def connect_to_hub_sync():
+    """Connect to the Nobø Hub (synchronous, runs in thread)"""
     global hub, hub_connected
     
     try:
@@ -75,12 +111,29 @@ async def connect_to_hub():
         raise
 
 
+async def connect_to_hub():
+    """Connect to the Nobø Hub (async wrapper)"""
+    global hub_thread
+    
+    # Run the synchronous connection in a thread to avoid event loop conflicts
+    hub_thread = threading.Thread(target=connect_to_hub_sync, daemon=True)
+    hub_thread.start()
+    
+    # Wait a moment for connection to establish
+    await asyncio.sleep(2)
+
+
 def hub_update_callback(hub_instance):
     """Callback function triggered when hub data changes"""
     logger.info("Hub data updated - broadcasting to websocket clients")
     
-    # Broadcast update to all connected websockets
-    asyncio.create_task(broadcast_zone_update())
+    # Schedule the broadcast in the main event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.run_coroutine_threadsafe(broadcast_zone_update(), loop)
+    except Exception as e:
+        logger.error(f"Error scheduling broadcast: {e}")
 
 
 async def broadcast_zone_update():
@@ -168,38 +221,6 @@ def determine_zone_mode(zone_id: str, zone: Dict) -> str:
     # No override - check current schedule
     # This is a simplified version - actual implementation would check week profiles
     return 'normal'
-
-
-# ===== Startup & Shutdown =====
-@app.on_event("startup")
-async def startup_event():
-    """Initialize hub connection on startup"""
-    try:
-        await connect_to_hub()
-    except Exception as e:
-        logger.error(f"Failed to connect to hub on startup: {e}")
-        # Don't fail startup - allow server to run and show disconnected state
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up on shutdown"""
-    global hub, connected_websockets
-    
-    # Close all websocket connections
-    for ws in connected_websockets:
-        try:
-            await ws.close()
-        except:
-            pass
-    connected_websockets.clear()
-    
-    # Disconnect from hub
-    if hub:
-        try:
-            hub.stop()
-        except:
-            pass
 
 
 # ===== API Endpoints =====
