@@ -31,42 +31,100 @@ NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '111111111111')  # Replace with your
 NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP address
 
 # Demo mode - set to True to use simulated data instead of connecting to real hub
-# Automatically enabled when using the test serial number
-DEMO_MODE = NOBO_SERIAL == '111111111111'  # Test serial that enables demo mode
+# Can be enabled via environment variable or using the test serial number
+DEMO_MODE = os.environ.get('NOBO_DEMO', '').lower() in ('true', '1', 'yes') or NOBO_SERIAL == '111111111111'
 DEMO_SOFTWARE_VERSION = "1.4.0 (Simulated)"  # Software version shown in demo mode
 
-# Device type configuration
-# Maps zone names to device types. Update these to match your actual zone names from the hub.
-DEVICE_TYPE_MAP = {
-    "Large Bathroom": "NTB-2R",
-    "Small Bathroom": "NTB-2R",
-    "Hallway": "NTB-2R",
-    "Upstairs Bedroom North": "R80 RDC 700",
-    "Upstairs Bedroom South": "R80 RDC 700",
-    "Kitchen": "R80 RDC 700",
-    "Living Room": "R80 RDC 700",
-    "Tech Room": "R80 RDC 700",
-    "Master Bedroom": "R80 RDC 700",
-    "Downstairs Bedroom North": "R80 RDC 700",
-    "Downstairs Bedroom South": "R80 RDC 700",
-}
-# Default device type if zone name not found in map
-DEFAULT_DEVICE_TYPE = "R80 RDC 700"
-
-# Demo mode zone data - realistic Norwegian indoor temperatures
+# Demo mode zone data - 7 grouped zones with realistic Norwegian indoor temperatures
 DEMO_ZONES = [
-    {"zone_id": "1", "name": "Large Bathroom", "current_temp": 24.2, "comfort_temp": 24.0, "eco_temp": 21.0, "mode": "comfort"},
-    {"zone_id": "2", "name": "Small Bathroom", "current_temp": 23.8, "comfort_temp": 23.5, "eco_temp": 20.5, "mode": "comfort"},
-    {"zone_id": "3", "name": "Hallway", "current_temp": 21.5, "comfort_temp": 21.0, "eco_temp": 19.0, "mode": "eco"},
-    {"zone_id": "4", "name": "Upstairs Bedroom North", "current_temp": 20.3, "comfort_temp": 21.0, "eco_temp": 18.0, "mode": "eco"},
-    {"zone_id": "5", "name": "Upstairs Bedroom South", "current_temp": 20.8, "comfort_temp": 21.0, "eco_temp": 18.0, "mode": "eco"},
-    {"zone_id": "6", "name": "Kitchen", "current_temp": 21.2, "comfort_temp": 21.0, "eco_temp": 19.0, "mode": "normal"},
-    {"zone_id": "7", "name": "Living Room", "current_temp": 22.1, "comfort_temp": 22.0, "eco_temp": 19.5, "mode": "comfort"},
-    {"zone_id": "8", "name": "Tech Room", "current_temp": 21.8, "comfort_temp": 21.5, "eco_temp": 19.0, "mode": "comfort"},
-    {"zone_id": "9", "name": "Master Bedroom", "current_temp": 20.5, "comfort_temp": 21.0, "eco_temp": 18.5, "mode": "eco"},
-    {"zone_id": "10", "name": "Downstairs Bedroom North", "current_temp": 20.2, "comfort_temp": 20.5, "eco_temp": 18.0, "mode": "eco"},
-    {"zone_id": "11", "name": "Downstairs Bedroom South", "current_temp": 20.7, "comfort_temp": 20.5, "eco_temp": 18.0, "mode": "eco"},
+    {
+        "zone_id": "1",
+        "name": "Large Bathroom",
+        "icon": "🛁",
+        "rooms": ["Large Bathroom"],
+        "components": ["210000016247"],  # NTB-2R device
+        "current_temp": 24.2,
+        "comfort_temp": 24.0,
+        "eco_temp": 21.0,
+        "mode": "comfort",
+        "override_id": None
+    },
+    {
+        "zone_id": "2",
+        "name": "Small Bathroom",
+        "icon": "🛁",
+        "rooms": ["Small Bathroom"],
+        "components": ["210000016248"],  # NTB-2R device
+        "current_temp": 23.8,
+        "comfort_temp": 23.5,
+        "eco_temp": 20.5,
+        "mode": "comfort",
+        "override_id": None
+    },
+    {
+        "zone_id": "3",
+        "name": "Hallway",
+        "icon": "🚪",
+        "rooms": ["Hallway"],
+        "components": ["210000016249"],  # NTB-2R device
+        "current_temp": 21.5,
+        "comfort_temp": 21.0,
+        "eco_temp": 19.0,
+        "mode": "normal",
+        "override_id": None
+    },
+    {
+        "zone_id": "4",
+        "name": "Upstairs Bedrooms",
+        "icon": "🛏️",
+        "rooms": ["North", "South"],
+        "components": ["160004028112", "160004028113"],  # R80 RDC 700 devices
+        "current_temp": 20.3,
+        "comfort_temp": 21.0,
+        "eco_temp": 18.0,
+        "mode": "eco",
+        "override_id": None
+    },
+    {
+        "zone_id": "5",
+        "name": "Living Area",
+        "icon": "🍳🛋️",
+        "rooms": ["Kitchen", "Living Room"],
+        "components": ["160004028114", "160004028115"],  # R80 RDC 700 devices
+        "current_temp": 21.2,
+        "comfort_temp": 21.0,
+        "eco_temp": 19.0,
+        "mode": "normal",
+        "override_id": None
+    },
+    {
+        "zone_id": "6",
+        "name": "Tech Room",
+        "icon": "💻",
+        "rooms": ["Tech Room"],
+        "components": ["160004028116"],  # R80 RDC 700 device
+        "current_temp": 21.8,
+        "comfort_temp": 21.5,
+        "eco_temp": 19.0,
+        "mode": "comfort",
+        "override_id": None
+    },
+    {
+        "zone_id": "7",
+        "name": "Downstairs Bedrooms",
+        "icon": "🛏️",
+        "rooms": ["Master", "North", "South"],
+        "components": ["160004028117", "160004028118", "160004028119"],  # R80 RDC 700 devices
+        "current_temp": 20.5,
+        "comfort_temp": 20.5,
+        "eco_temp": 18.0,
+        "mode": "eco",
+        "override_id": None
+    },
 ]
+
+# Away temperature (set by Nobø, not configurable)
+AWAY_TEMPERATURE = 7.0
 
 # ========================
 
@@ -77,6 +135,64 @@ hub_connected = False
 hub_thread: Optional[threading.Thread] = None
 websocket_lock = asyncio.Lock()  # Lock for thread-safe websocket list access
 connection_lock = threading.Lock()  # Lock for thread-safe hub_connected access
+
+
+# ===== Helper Functions =====
+def detect_device_type(serial: str) -> tuple[str, bool, bool]:
+    """
+    Detect device type from serial number prefix using pynobo MODELS.
+    
+    Args:
+        serial: 12-digit serial number (with or without spaces)
+    
+    Returns:
+        tuple: (device_name, supports_comfort, supports_eco)
+    """
+    # Remove spaces and ensure it's a string
+    serial_clean = str(serial).replace(' ', '').strip()
+    
+    # Get first 3 digits (model prefix)
+    if len(serial_clean) < 3:
+        return ("Unknown", False, False)
+    
+    model_prefix = serial_clean[:3]
+    
+    # Look up in pynobo MODELS
+    if model_prefix in pynobo.nobo.MODELS:
+        model = pynobo.nobo.MODELS[model_prefix]
+        return (model.name, model.supports_comfort, model.supports_eco)
+    
+    # Default for unknown models
+    return ("Unknown", False, False)
+
+
+def format_serial_display(serial: str) -> str:
+    """
+    Format serial number for display with spaces: XXX XXX XXX XXX
+    
+    Args:
+        serial: 12-digit serial number
+    
+    Returns:
+        Formatted serial with spaces
+    """
+    serial_clean = str(serial).replace(' ', '').strip()
+    if len(serial_clean) == 12:
+        return f"{serial_clean[0:3]} {serial_clean[3:6]} {serial_clean[6:9]} {serial_clean[9:12]}"
+    return serial_clean
+
+
+def parse_serial_input(serial: str) -> str:
+    """
+    Parse serial number input (with or without spaces) to 12-digit format.
+    
+    Args:
+        serial: Serial number input
+    
+    Returns:
+        12-digit serial without spaces
+    """
+    return str(serial).replace(' ', '').strip()
 
 
 # ===== Lifespan Context Manager =====
@@ -234,20 +350,32 @@ def get_zones_data() -> List[Dict[str, Any]]:
     if DEMO_MODE:
         zones = []
         for demo_zone in DEMO_ZONES:
-            zone_name = demo_zone['name']
-            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
-            supports_temp_adjust = device_type == "NTB-2R"
+            # Auto-detect device type from first component serial
+            if demo_zone['components']:
+                device_name, supports_comfort, supports_eco = detect_device_type(demo_zone['components'][0])
+            else:
+                device_name, supports_comfort, supports_eco = ("Unknown", False, False)
+            
+            # Format components for display
+            components_display = [format_serial_display(c) for c in demo_zone['components']]
             
             zones.append({
                 'zone_id': demo_zone['zone_id'],
-                'name': zone_name,
+                'name': demo_zone['name'],
+                'icon': demo_zone.get('icon', ''),
+                'rooms': demo_zone.get('rooms', []),
+                'components': demo_zone['components'],
+                'components_display': components_display,
                 'current_temperature': demo_zone['current_temp'],
                 'comfort_temperature': demo_zone['comfort_temp'],
                 'eco_temperature': demo_zone['eco_temp'],
+                'away_temperature': AWAY_TEMPERATURE,
                 'current_mode': demo_zone['mode'],
-                'active_override_id': None,
-                'device_type': device_type,
-                'supports_temp_adjust': supports_temp_adjust
+                'active_override_id': demo_zone.get('override_id'),
+                'device_type': device_name,
+                'supports_comfort': supports_comfort,
+                'supports_eco': supports_eco,
+                'supports_temp_adjust': supports_comfort or supports_eco
             })
         return zones
     
@@ -260,9 +388,20 @@ def get_zones_data() -> List[Dict[str, Any]]:
         for zone_id, zone in hub.zones.items():
             zone_name = zone.get('name', f'Zone {zone_id}')
             
-            # Determine device type
-            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
-            supports_temp_adjust = device_type == "NTB-2R"
+            # Get components for this zone
+            zone_components = []
+            for comp_id, comp in hub.components.items():
+                if comp.get('zone', '') == zone_id:
+                    zone_components.append(comp_id)
+            
+            # Auto-detect device type from first component
+            if zone_components:
+                device_name, supports_comfort, supports_eco = detect_device_type(zone_components[0])
+            else:
+                device_name, supports_comfort, supports_eco = ("Unknown", False, False)
+            
+            # Format components for display
+            components_display = [format_serial_display(c) for c in zone_components]
             
             # Get current temperature
             current_temp = zone.get('temp', 0.0)
@@ -279,13 +418,20 @@ def get_zones_data() -> List[Dict[str, Any]]:
             zones.append({
                 'zone_id': str(zone_id),
                 'name': zone_name,
+                'icon': '',  # Could be configured per zone
+                'rooms': [zone_name],  # Default to zone name
+                'components': zone_components,
+                'components_display': components_display,
                 'current_temperature': current_temp,
                 'comfort_temperature': comfort_temp,
                 'eco_temperature': eco_temp,
+                'away_temperature': AWAY_TEMPERATURE,
                 'current_mode': mode,
                 'active_override_id': zone.get('active_override_id'),
-                'device_type': device_type,
-                'supports_temp_adjust': supports_temp_adjust
+                'device_type': device_name,
+                'supports_comfort': supports_comfort,
+                'supports_eco': supports_eco,
+                'supports_temp_adjust': supports_comfort or supports_eco
             })
     except Exception as e:
         logger.error(f"Error getting zones data: {e}")
@@ -323,6 +469,7 @@ async def get_status():
     
     return {
         "connected": connected,
+        "demo_mode": DEMO_MODE,
         "hub_serial": NOBO_SERIAL if connected else None,
         "timestamp": datetime.now().isoformat()
     }
@@ -341,10 +488,11 @@ async def get_hub_info():
         # Demo mode - return simulated hub info
         if DEMO_MODE:
             return {
-                "name": "Nobø Hub (Demo Mode)",
+                "name": "Nobø Hub",
                 "serial": NOBO_SERIAL,
                 "software_version": DEMO_SOFTWARE_VERSION,
-                "connected": True
+                "connected": True,
+                "demo_mode": True
             }
         
         # Real hub mode
@@ -448,24 +596,29 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
-            zone_name = demo_zone['name']
-            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
+            # Auto-detect device type
+            if demo_zone['components']:
+                device_name, supports_comfort, supports_eco = detect_device_type(demo_zone['components'][0])
+            else:
+                device_name, supports_comfort, supports_eco = ("Unknown", False, False)
             
-            if device_type != "NTB-2R":
+            if not (supports_comfort or supports_eco):
                 raise HTTPException(
                     status_code=400, 
-                    detail=f"Temperature cannot be adjusted remotely for {device_type} devices. Temperature is set manually on the physical device."
+                    detail=f"Temperature cannot be adjusted remotely for {device_name} devices. Temperature is set manually on the physical device."
                 )
             
             # In demo mode, just validate and return success
             if temps.comfort is not None:
                 if not 7 <= temps.comfort <= 30:
                     raise HTTPException(status_code=400, detail="Comfort temperature must be between 7 and 30°C")
-                demo_zone['comfort_temp'] = temps.comfort
+                if supports_comfort:
+                    demo_zone['comfort_temp'] = temps.comfort
             if temps.eco is not None:
                 if not 7 <= temps.eco <= 30:
                     raise HTTPException(status_code=400, detail="Eco temperature must be between 7 and 30°C")
-                demo_zone['eco_temp'] = temps.eco
+                if supports_eco:
+                    demo_zone['eco_temp'] = temps.eco
             
             return {"status": "success", "zone_id": zone_id, "comfort": temps.comfort, "eco": temps.eco}
         
@@ -478,14 +631,23 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
             raise HTTPException(status_code=404, detail="Zone not found")
         
         zone = hub.zones[zone_id]
-        zone_name = zone.get('name', f'Zone {zone_id}')
+        
+        # Get components for this zone and auto-detect device type
+        zone_components = []
+        for comp_id, comp in hub.components.items():
+            if comp.get('zone', '') == zone_id:
+                zone_components.append(comp_id)
+        
+        if zone_components:
+            device_name, supports_comfort, supports_eco = detect_device_type(zone_components[0])
+        else:
+            device_name, supports_comfort, supports_eco = ("Unknown", False, False)
         
         # Check if device supports temperature adjustment
-        device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
-        if device_type != "NTB-2R":
+        if not (supports_comfort or supports_eco):
             raise HTTPException(
                 status_code=400, 
-                detail=f"Temperature cannot be adjusted remotely for {device_type} devices. Temperature is set manually on the physical device."
+                detail=f"Temperature cannot be adjusted remotely for {device_name} devices. Temperature is set manually on the physical device."
             )
         
         # Validate temperatures (7-30°C range)
