@@ -489,54 +489,108 @@ function loadScheduleForZone() {
     currentScheduleZone = zoneId;
     document.getElementById('scheduleEditor').style.display = 'block';
     
-    // TODO: Load actual schedule from API
-    renderSchedule();
+    // Load actual schedule from API
+    loadScheduleFromAPI();
+}
+
+async function loadScheduleFromAPI() {
+    if (!currentScheduleZone) return;
+    
+    try {
+        const response = await fetch(`/api/zones/${currentScheduleZone}/schedule`);
+        if (!response.ok) {
+            throw new Error('Failed to load schedule');
+        }
+        
+        const data = await response.json();
+        scheduleData = data.schedule || {};
+        renderSchedule();
+    } catch (error) {
+        console.error('Error loading schedule:', error);
+        showError('Failed to load schedule');
+        // Render with default sample data
+        renderSchedule();
+    }
 }
 
 function renderSchedule() {
     const scheduleDays = document.getElementById('scheduleDays');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     
-    // Sample schedule data
-    const sampleSchedule = {
-        monday: [
-            { start: '00:00', end: '07:00', mode: 'eco' },
-            { start: '07:00', end: '22:00', mode: 'comfort' },
-            { start: '22:00', end: '24:00', mode: 'eco' }
-        ]
-    };
+    // Default schedule if no data loaded
+    if (!scheduleData || Object.keys(scheduleData).length === 0) {
+        scheduleData = {};
+        days.forEach(day => {
+            scheduleData[day] = [
+                { start: '00:00', end: '07:00', mode: 'eco' },
+                { start: '07:00', end: '22:00', mode: 'comfort' },
+                { start: '22:00', end: '24:00', mode: 'eco' }
+            ];
+        });
+    }
     
     scheduleDays.innerHTML = days.map((day, index) => {
+        const blocks = scheduleData[day] || [];
+        const blockHtml = blocks.map(block => {
+            const startMinutes = timeToMinutes(block.start);
+            const endMinutes = timeToMinutes(block.end);
+            const duration = endMinutes - startMinutes;
+            const widthPercent = (duration / (24 * 60)) * 100;
+            
+            return `<div class="timeline-block ${block.mode}" style="width: ${widthPercent}%">${block.mode.charAt(0).toUpperCase() + block.mode.slice(1)} ${block.start}-${block.end}</div>`;
+        }).join('');
+        
         return `
             <div class="schedule-day">
-                <div class="day-name">${day}</div>
+                <div class="day-name">${dayNames[index]}</div>
                 <div class="day-timeline">
                     <div class="timeline-bar">
-                        <!-- Timeline blocks will be rendered here -->
-                        <div class="timeline-block eco" style="width: 29.17%">Eco 00:00-07:00</div>
-                        <div class="timeline-block comfort" style="width: 62.5%">Comfort 07:00-22:00</div>
-                        <div class="timeline-block eco" style="width: 8.33%">Eco 22:00-24:00</div>
+                        ${blockHtml || '<div class="timeline-block eco" style="width: 100%">No schedule</div>'}
                     </div>
                 </div>
                 <div class="day-actions">
-                    <button class="btn btn-sm" onclick="addTimeBlock('${day.toLowerCase()}')">+ Add</button>
-                    <button class="btn btn-sm" onclick="copyDay('${day.toLowerCase()}')">Copy to...</button>
+                    <button class="btn btn-sm" onclick="addTimeBlock('${day}')">+ Add</button>
+                    <button class="btn btn-sm" onclick="copyDay('${day}')">Copy to...</button>
                 </div>
             </div>
         `;
     }).join('');
 }
 
+function timeToMinutes(timeStr) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
 function addTimeBlock(day) {
-    showError('Schedule editing coming soon');
+    showError('Schedule editing functionality coming soon');
 }
 
 function copyDay(day) {
     showError('Copy day functionality coming soon');
 }
 
-function saveSchedule() {
-    showError('Schedule saving coming soon');
+async function saveSchedule() {
+    if (!currentScheduleZone) return;
+    
+    try {
+        const response = await fetch(`/api/zones/${currentScheduleZone}/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ schedule: scheduleData })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to save schedule');
+        }
+        
+        showError('✅ Schedule saved successfully');
+    } catch (error) {
+        console.error('Error saving schedule:', error);
+        showError(error.message);
+    }
 }
 
 function cancelSchedule() {
@@ -634,16 +688,108 @@ function detectDeviceModel() {
     }
 }
 
-function addDevice() {
-    showError('Add device functionality coming soon');
+async function addDevice() {
+    const serialInput = document.getElementById('deviceSerial');
+    const zoneSelect = document.getElementById('deviceZone');
+    
+    const serial = serialInput.value.replace(/\s/g, '');
+    const zoneId = zoneSelect.value;
+    
+    if (!serial || serial.length !== 12) {
+        showError('Please enter a valid 12-digit serial number');
+        return;
+    }
+    
+    if (!zoneId) {
+        showError('Please select a zone');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serial, zone_id: zoneId })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add device');
+        }
+        
+        // Clear form
+        serialInput.value = '';
+        zoneSelect.value = '';
+        document.getElementById('detectedModel').textContent = '';
+        
+        // Refresh zones and devices list
+        await fetchZones();
+        renderDevicesList();
+        
+        showError('✅ Device added successfully');
+    } catch (error) {
+        console.error('Error adding device:', error);
+        showError(error.message);
+    }
 }
 
-function replaceDevice(serial, zoneId) {
-    showError('Replace device functionality coming soon');
+async function replaceDevice(serial, zoneId) {
+    const newSerial = prompt('Enter new device serial number (12 digits):');
+    if (!newSerial) return;
+    
+    const cleanSerial = newSerial.replace(/\s/g, '');
+    if (cleanSerial.length !== 12) {
+        showError('Serial number must be 12 digits');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/devices/${serial}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_serial: cleanSerial })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to replace device');
+        }
+        
+        // Refresh zones and devices list
+        await fetchZones();
+        renderDevicesList();
+        
+        showError('✅ Device replaced successfully');
+    } catch (error) {
+        console.error('Error replacing device:', error);
+        showError(error.message);
+    }
 }
 
-function removeDevice(serial, zoneId) {
-    showError('Remove device functionality coming soon');
+async function removeDevice(serial, zoneId) {
+    if (!confirm(`Are you sure you want to remove device ${serial}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/devices/${serial}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to remove device');
+        }
+        
+        // Refresh zones and devices list
+        await fetchZones();
+        renderDevicesList();
+        
+        showError('✅ Device removed successfully');
+    } catch (error) {
+        console.error('Error removing device:', error);
+        showError(error.message);
+    }
 }
 
 // ===== Error Toast =====

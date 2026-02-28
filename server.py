@@ -759,6 +759,324 @@ async def get_week_profiles():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ===== Schedule API Endpoints =====
+@app.get("/api/zones/{zone_id}/schedule")
+async def get_zone_schedule(zone_id: str):
+    """Get the weekly schedule for a specific zone"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        # Demo mode - return sample schedule
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            # Sample schedule: Eco 00:00-07:00, Comfort 07:00-22:00, Eco 22:00-24:00
+            sample_schedule = {
+                "zone_id": zone_id,
+                "zone_name": demo_zone['name'],
+                "schedule": {
+                    "monday": [
+                        {"start": "00:00", "end": "07:00", "mode": "eco"},
+                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
+                        {"start": "22:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "tuesday": [
+                        {"start": "00:00", "end": "07:00", "mode": "eco"},
+                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
+                        {"start": "22:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "wednesday": [
+                        {"start": "00:00", "end": "07:00", "mode": "eco"},
+                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
+                        {"start": "22:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "thursday": [
+                        {"start": "00:00", "end": "07:00", "mode": "eco"},
+                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
+                        {"start": "22:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "friday": [
+                        {"start": "00:00", "end": "07:00", "mode": "eco"},
+                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
+                        {"start": "22:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "saturday": [
+                        {"start": "00:00", "end": "09:00", "mode": "eco"},
+                        {"start": "09:00", "end": "23:00", "mode": "comfort"},
+                        {"start": "23:00", "end": "24:00", "mode": "eco"}
+                    ],
+                    "sunday": [
+                        {"start": "00:00", "end": "09:00", "mode": "eco"},
+                        {"start": "09:00", "end": "23:00", "mode": "comfort"},
+                        {"start": "23:00", "end": "24:00", "mode": "eco"}
+                    ]
+                }
+            }
+            return sample_schedule
+        
+        # Real hub mode - get week profile from pynobo
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        if zone_id not in hub.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        zone = hub.zones[zone_id]
+        week_profile_id = zone.get('week_profile_id')
+        
+        if not week_profile_id or week_profile_id not in hub.week_profiles:
+            raise HTTPException(status_code=404, detail="Week profile not found for zone")
+        
+        week_profile = hub.week_profiles[week_profile_id]
+        
+        return {
+            "zone_id": zone_id,
+            "zone_name": zone.get('name', f'Zone {zone_id}'),
+            "week_profile_id": week_profile_id,
+            "week_profile": week_profile
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting zone schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/zones/{zone_id}/schedule")
+async def update_zone_schedule(zone_id: str, schedule: dict):
+    """Update the weekly schedule for a specific zone"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        # Demo mode - just validate and return success
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            logger.info(f"Demo mode: Schedule updated for zone {zone_id}")
+            return {"status": "success", "zone_id": zone_id, "message": "Schedule updated (demo mode)"}
+        
+        # Real hub mode - update week profile using pynobo
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        if zone_id not in hub.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        # This would need to be implemented based on pynobo's week profile format
+        # For now, return not implemented
+        raise HTTPException(status_code=501, detail="Schedule update not yet implemented for real hub")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating zone schedule: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== Device Management API Endpoints =====
+@app.get("/api/devices")
+async def get_devices():
+    """Get all registered devices with their zone assignments"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        zones_data = get_zones_data()
+        devices = []
+        
+        for zone in zones_data:
+            for i, serial in enumerate(zone['components']):
+                device_name, supports_comfort, supports_eco = detect_device_type(serial)
+                devices.append({
+                    'serial': serial,
+                    'serial_display': zone['components_display'][i] if i < len(zone['components_display']) else format_serial_display(serial),
+                    'device_type': device_name,
+                    'zone_id': zone['zone_id'],
+                    'zone_name': zone['name']
+                })
+        
+        return {"devices": devices}
+    except Exception as e:
+        logger.error(f"Error getting devices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeviceAdd(BaseModel):
+    serial: str
+    zone_id: str
+
+
+@app.post("/api/devices")
+async def add_device(device: DeviceAdd):
+    """Add a new device to a zone"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        # Parse and validate serial
+        serial = parse_serial_input(device.serial)
+        if len(serial) != 12:
+            raise HTTPException(status_code=400, detail="Serial number must be 12 digits")
+        
+        # Auto-detect device type
+        device_name, supports_comfort, supports_eco = detect_device_type(serial)
+        if device_name == "Unknown":
+            raise HTTPException(status_code=400, detail=f"Unknown device model for serial prefix {serial[:3]}")
+        
+        # Demo mode - add to DEMO_ZONES
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == device.zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            if serial in demo_zone['components']:
+                raise HTTPException(status_code=400, detail="Device already registered in this zone")
+            
+            demo_zone['components'].append(serial)
+            logger.info(f"Demo mode: Device {serial} added to zone {device.zone_id}")
+            
+            return {
+                "status": "success",
+                "serial": serial,
+                "serial_display": format_serial_display(serial),
+                "device_type": device_name,
+                "zone_id": device.zone_id
+            }
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        raise HTTPException(status_code=501, detail="Add device not yet implemented for real hub")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeviceReplace(BaseModel):
+    new_serial: str
+
+
+@app.put("/api/devices/{serial}")
+async def replace_device(serial: str, replacement: DeviceReplace):
+    """Replace a device with a new one"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        # Parse serials
+        old_serial = parse_serial_input(serial)
+        new_serial = parse_serial_input(replacement.new_serial)
+        
+        if len(new_serial) != 12:
+            raise HTTPException(status_code=400, detail="New serial number must be 12 digits")
+        
+        # Auto-detect new device type
+        device_name, _, _ = detect_device_type(new_serial)
+        if device_name == "Unknown":
+            raise HTTPException(status_code=400, detail=f"Unknown device model for serial prefix {new_serial[:3]}")
+        
+        # Demo mode - replace in DEMO_ZONES
+        if DEMO_MODE:
+            found = False
+            for demo_zone in DEMO_ZONES:
+                if old_serial in demo_zone['components']:
+                    idx = demo_zone['components'].index(old_serial)
+                    demo_zone['components'][idx] = new_serial
+                    found = True
+                    logger.info(f"Demo mode: Device {old_serial} replaced with {new_serial} in zone {demo_zone['zone_id']}")
+                    break
+            
+            if not found:
+                raise HTTPException(status_code=404, detail="Device not found")
+            
+            return {
+                "status": "success",
+                "old_serial": old_serial,
+                "new_serial": new_serial,
+                "serial_display": format_serial_display(new_serial),
+                "device_type": device_name
+            }
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        raise HTTPException(status_code=501, detail="Replace device not yet implemented for real hub")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error replacing device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/devices/{serial}")
+async def remove_device(serial: str):
+    """Remove a device from its zone"""
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+    
+    try:
+        # Parse serial
+        serial_clean = parse_serial_input(serial)
+        
+        # Demo mode - remove from DEMO_ZONES
+        if DEMO_MODE:
+            found = False
+            for demo_zone in DEMO_ZONES:
+                if serial_clean in demo_zone['components']:
+                    demo_zone['components'].remove(serial_clean)
+                    found = True
+                    logger.info(f"Demo mode: Device {serial_clean} removed from zone {demo_zone['zone_id']}")
+                    break
+            
+            if not found:
+                raise HTTPException(status_code=404, detail="Device not found")
+            
+            return {"status": "success", "serial": serial_clean}
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        raise HTTPException(status_code=501, detail="Remove device not yet implemented for real hub")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error removing device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ===== WebSocket Endpoint =====
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
