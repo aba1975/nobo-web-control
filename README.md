@@ -155,6 +155,8 @@ The system includes a demo mode for testing without a real hub:
 - All features work including mode changes and temperature adjustments (for NTB-2R zones)
 - Perfect for testing the UI and learning the system
 
+**Note:** The serial `111111111111` is reserved for demo mode and will never connect to a real hub. Use your actual 12-digit serial number when connecting to a real device.
+
 ## Running the Server
 
 ### Standard Method

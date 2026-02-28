@@ -222,7 +222,7 @@ body {
     box-shadow: var(--shadow-md);
     transition: var(--transition);
     border: 2px solid transparent;
-    position: relative;
+    position: relative; /* Needed for absolute positioning of device badge */
 }
 
 .zone-card:hover {

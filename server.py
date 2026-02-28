@@ -31,7 +31,9 @@ NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '111111111111')  # Replace with your
 NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP address
 
 # Demo mode - set to True to use simulated data instead of connecting to real hub
-DEMO_MODE = NOBO_SERIAL == '111111111111'  # Automatically enable demo mode for test serial
+# Automatically enabled when using the test serial number
+DEMO_MODE = NOBO_SERIAL == '111111111111'  # Test serial that enables demo mode
+DEMO_SOFTWARE_VERSION = "1.4.0 (Simulated)"  # Software version shown in demo mode
 
 # Device type configuration
 # Maps zone names to device types. Update these to match your actual zone names from the hub.
@@ -341,7 +343,7 @@ async def get_hub_info():
             return {
                 "name": "Nobø Hub (Demo Mode)",
                 "serial": NOBO_SERIAL,
-                "software_version": "1.4.0 (Simulated)",
+                "software_version": DEMO_SOFTWARE_VERSION,
                 "connected": True
             }
         
