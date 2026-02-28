@@ -4,15 +4,26 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 
 ## Features
 
+### Core Functionality
 - 🌡️ **Real-time Temperature Monitoring** - See current temperatures for all zones
-- 🎛️ **Zone Control** - Individual control of each heating zone
-- 🔥 **Multiple Modes** - Comfort, Eco, Away, and Schedule modes
-- 🔧 **Multi-Device Support** - Supports NTB-2R (full control) and R80 RDC 700 (mode only) devices
-- 🎨 **Device-Aware UI** - Automatically shows/hides controls based on device capabilities
-- 🌐 **Local Control** - No cloud required - works entirely on your local network
+- 🎛️ **Zone Control** - Individual control of each heating zone with override capabilities
+- 🔥 **Multiple Modes** - Comfort, Eco, Away, and Off modes
+- 📅 **Weekly Schedule Editor** - Configure heating schedules for each zone
+- 🔧 **Device Management** - Add, remove, and replace devices with auto-detection
+- 🏠 **Global Controls** - Quick Home and Away modes for all zones
+
+### Device Support
+- **NTB-2R** (Thermostat with floor sensor) - Full remote control including temperature adjustment
+- **R80 RDC 700** (Panel heater receiver) - Mode control (temperatures adjusted manually on device)
+- 🎨 **Auto-Detection** - Device types automatically detected from serial number prefix
+- 🔍 **Device-Aware UI** - Controls automatically adjust based on device capabilities
+
+### User Interface
+- 🗂️ **Multi-Page Navigation** - Zones, Schedule, and Devices pages with hash-based routing
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
 - ⚡ **Live Updates** - WebSocket-based real-time updates without page refresh
 - 🎨 **Modern UI** - Clean, card-based design inspired by the Mill app
+- 🌐 **Local Control** - No cloud required - works entirely on your local network
 - 🧪 **Demo Mode** - Test the system without a real hub connection
 
 ## Architecture
@@ -21,11 +32,12 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 nobo-web-control/
 ├── server.py              # FastAPI backend using pynobo
 ├── static/
-│   ├── index.html         # Main webpage
+│   ├── index.html         # Main webpage with 3-page navigation
 │   ├── style.css          # Styling (Mill-app inspired, card-based)
 │   ├── app.js             # Frontend logic + WebSocket for live updates
 │   └── images/
-│       └── placeholder.svg # Placeholder device image (simple heater icon SVG)
+│       ├── ntb-2r.svg     # NTB-2R device image
+│       └── r80-rdc-700.svg # R80 RDC 700 device image
 ├── requirements.txt       # Python dependencies
 └── README.md              # This file
 ```
@@ -34,8 +46,8 @@ nobo-web-control/
 
 - **Python 3.8 or higher**
 - **pip** (Python package installer)
-- **Nobø Energy Hub** on your local network
-- Hub serial number and IP address
+- **Nobø Energy Hub** on your local network (or use demo mode)
+- Hub serial number and IP address (if connecting to real hub)
 
 ## Installation
 
@@ -100,60 +112,57 @@ NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '123456789012')  # Replace with your
 NOBO_IP = os.environ.get('NOBO_IP', '192.168.1.100')  # Replace with your IP
 ```
 
-### Device Type Configuration
+#### Device Types & Auto-Detection
 
-The system supports two different device types with different capabilities:
+The system automatically detects device types from serial number prefixes:
 
-#### Device Types
-
-**1. Nobø NTB-2R (Thermostat Receiver)**
+**1. Nobø NTB-2R (Thermostat Receiver) - Serial prefix: 210**
 - Full remote control with mode switching AND temperature adjustment
 - Has a built-in temperature sensor
 - UI shows: current temp, comfort/eco temp with +/- adjustment buttons, and mode buttons
 - Blue badge in the UI
 
-**2. Nobø R80 RDC 700 (Panel Heater Receiver)**
+**2. Nobø R80 RDC 700 (Panel Heater Receiver) - Serial prefix: 160**
 - Mode control only: can switch between Comfort/Eco/Away/Off remotely
 - Temperature is set **manually on the physical dial on the heater** — cannot be adjusted remotely
 - UI shows: mode buttons only, NO temperature +/- controls
-- Displays a notice: "Temperature is adjusted manually on the device"
+- Displays a notice: "Comfort & Eco temperatures are adjusted manually on the device"
 - May still report current temperature if a sensor is connected
 - Grey badge in the UI
 
-#### Configuring Device Types
-
-Edit the `DEVICE_TYPE_MAP` in `server.py` to match your zones and device types:
-
-```python
-# Device type configuration
-DEVICE_TYPE_MAP = {
-    "Large Bathroom": "NTB-2R",
-    "Small Bathroom": "NTB-2R",
-    "Hallway": "NTB-2R",
-    "Upstairs Bedroom North": "R80 RDC 700",
-    "Upstairs Bedroom South": "R80 RDC 700",
-    "Kitchen": "R80 RDC 700",
-    "Living Room": "R80 RDC 700",
-    "Tech Room": "R80 RDC 700",
-    "Master Bedroom": "R80 RDC 700",
-    "Downstairs Bedroom North": "R80 RDC 700",
-    "Downstairs Bedroom South": "R80 RDC 700",
-}
-```
-
-**Important Notes:**
-- Zone names must match exactly as they appear in your Nobø Hub
-- Use the official Nobø app to check your zone names if needed
-- The system will use `DEFAULT_DEVICE_TYPE` ("R80 RDC 700") for any zones not in the map
-- Temperature adjustments for R80 RDC 700 devices will be rejected by the API
+**Auto-Detection:**
+- Devices are automatically identified by their serial number prefix
+- Serial numbers are displayed as: `XXX XXX XXX XXX` (e.g., `210 000 016 247`)
+- No manual configuration needed!
 
 ### Demo Mode
 
-The system includes a demo mode for testing without a real hub:
-- Automatically enabled when using the test serial `111111111111`
-- Shows all 11 zones with realistic Norwegian indoor temperatures
-- All features work including mode changes and temperature adjustments (for NTB-2R zones)
-- Perfect for testing the UI and learning the system
+The system includes a comprehensive demo mode for testing without a real hub:
+
+**Enable demo mode:**
+```bash
+# Option 1: Use environment variable
+export NOBO_DEMO=true
+python server.py
+
+# Option 2: Use the reserved demo serial number
+export NOBO_SERIAL=111111111111
+python server.py
+
+# Option 3: Set --demo flag (if implemented)
+python server.py --demo
+```
+
+**Demo mode features:**
+- ✅ Shows 7 realistic zones with grouped rooms
+- ✅ All zones with different device types (NTB-2R and R80 RDC 700)
+- ✅ Realistic Norwegian indoor temperatures with slight variations
+- ✅ All modes work (Comfort, Eco, Away, Off, Schedule)
+- ✅ Temperature adjustments work for NTB-2R zones
+- ✅ Schedule editor with sample weekly profiles
+- ✅ Device management (add/remove/replace devices)
+- ✅ Live websocket updates
+- ✅ Status shows "🟡 Demo Mode"
 
 **Note:** The serial `111111111111` is reserved for demo mode and will never connect to a real hub. Use your actual 12-digit serial number when connecting to a real device.
 
@@ -162,6 +171,18 @@ The system includes a demo mode for testing without a real hub:
 ### Standard Method
 
 ```bash
+python server.py
+```
+
+### Demo Mode
+
+```bash
+# Using environment variable
+export NOBO_DEMO=true
+python server.py
+
+# Or using the demo serial
+export NOBO_SERIAL=111111111111
 python server.py
 ```
 
@@ -196,53 +217,81 @@ Replace `YOUR_SERVER_IP` with the IP address of the computer running the server.
 
 ## Usage
 
-### Global Controls
+### Zones Page (Home)
 
-Use the buttons at the top to quickly set all zones to the same mode:
-- **Comfort All** - Set all zones to comfort temperature
-- **Eco All** - Set all zones to eco (energy-saving) temperature  
-- **Away All** - Set all zones to away mode (minimal heating)
-- **Back to Schedule** - Return all zones to their programmed schedule
+The main Zones page shows all your heating zones:
 
-### Zone Cards
+**Global Controls:**
+- 🏠 **Home**: All zones follow their weekly schedule (default state)
+- 🏖️ **Away**: All zones switch to away mode (7°C)
 
-Each zone is displayed as a card showing:
-- Device type badge (NTB-2R or R80 RDC 700)
-- Device-specific icon (thermostat or panel heater)
-- Zone/room name
-- Current temperature (large display)
-- Target comfort temperature
-- Current mode indicator with color coding
-- Mode selection buttons
-- Temperature adjustment controls (only for NTB-2R devices)
-- Manual temperature notice (for R80 RDC 700 devices)
+**Zone Cards:**
+- View current temperature and mode
+- See device type (NTB-2R or R80 RDC 700)
+- For grouped zones, see all rooms (e.g., "North · South")
+- Override individual zones: Comfort, Eco, Away, or Off
+- For NTB-2R: Adjust comfort and eco temperatures with +/- buttons
+- Cancel overrides to return to schedule
+- Status indicator shows if zone is following schedule or has an override
 
-### Mode Selection
+### Schedule Page
 
-Click the mode buttons to change a zone's operating mode:
-- 🔥 **Comfort** - Maintain comfort temperature
-- 🌿 **Eco** - Use eco temperature (energy saving)
-- 🏠 **Away** - Minimal heating for when you're away
-- ⭘ **Normal** - Follow the programmed schedule
+Edit weekly heating schedules for each zone:
 
-### Temperature Adjustment (NTB-2R Only)
+- Select a zone from the dropdown
+- View 7-day timeline with color-coded blocks
+- Comfort mode = Orange, Eco mode = Green
+- See when each mode is active throughout the week
+- Save changes to apply new schedule
 
-For zones with NTB-2R devices, use the **+** and **−** buttons to adjust temperatures:
-- **Comfort temperature**: The temperature maintained in comfort mode
-- **Eco temperature**: The reduced temperature for eco mode
-- Temperature range: 7°C to 30°C
-- Changes are sent after 500ms of inactivity (debounced)
+### Devices Page
 
-**Note:** R80 RDC 700 devices do not support remote temperature adjustment. Temperature must be set manually on the physical dial on the heater.
+Manage your heating devices:
+
+**Add Device:**
+- Enter 12-digit serial number (formatted as XXX XXX XXX XXX)
+- Device type auto-detected from serial prefix
+- Assign to a zone
+- Click "Add Device"
+
+**Registered Devices:**
+- View all devices with their serial numbers, types, and zones
+- Replace: Swap a device with a new one (keeps settings)
+- Remove: Delete a device from the system
+
+## API Endpoints
+
+### Zones
+- `GET /api/zones` - Get all zones with current status
+- `POST /api/zones/{zone_id}/override/{mode}` - Set zone override (comfort/eco/away/off/normal)
+- `POST /api/zones/{zone_id}/temperature` - Update zone temperatures (NTB-2R only)
+- `GET /api/zones/{zone_id}/schedule` - Get zone weekly schedule
+- `POST /api/zones/{zone_id}/schedule` - Update zone weekly schedule
+
+### Global
+- `POST /api/global/override/{mode}` - Set global override for all zones
+
+### Devices
+- `GET /api/devices` - List all registered devices
+- `POST /api/devices` - Add a new device
+- `PUT /api/devices/{serial}` - Replace a device
+- `DELETE /api/devices/{serial}` - Remove a device
+
+### Hub
+- `GET /api/hub` - Get hub information
+- `GET /api/status` - Get connection status
+
+### WebSocket
+- `WS /ws` - WebSocket connection for real-time updates
 
 ## Important Notes
 
 ### Device Type Limitations
 
-- **NTB-2R devices**: Full control including remote temperature adjustment
-- **R80 RDC 700 devices**: Mode control only - temperature must be adjusted manually on the device's physical dial
+- **NTB-2R devices** (Serial: 210xxx): Full control including remote temperature adjustment
+- **R80 RDC 700 devices** (Serial: 160xxx): Mode control only - temperature must be adjusted manually on the device's physical dial
 - The UI automatically shows/hides controls based on device capabilities
-- Attempting to adjust temperature on R80 RDC 700 devices will result in an error message
+- Device types are auto-detected from serial number prefixes
 
 ### Single Connection Limitation
 
@@ -253,12 +302,7 @@ For zones with NTB-2R devices, use the **+** and **−** buttons to adjust tempe
 - The server must be on the same local network as your Nobø Hub
 - No internet connection is required for operation
 - All communication happens locally
-
-### Device Icons
-
-The system includes device-specific SVG icons:
-- **NTB-2R**: Thermostat receiver icon (blue badge)
-- **R80 RDC 700**: Panel heater icon (grey badge)
+- Use demo mode for testing without a real hub
 
 These icons help you quickly identify which type of device is in each zone.
 
