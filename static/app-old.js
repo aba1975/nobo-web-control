@@ -5,11 +5,10 @@ let pingInterval = null;
 let zones = [];
 let hubInfo = {};
 let temperatureTimers = {};
-let currentPage = 'main';
-let globalMode = 'home';  // 'home', 'away', 'eco', or 'comfort'
+let currentPage = 'zones';
+let globalMode = 'home';  // 'home' or 'away'
 let scheduleData = {};
 let currentScheduleZone = null;
-let currentZoneDetail = null;
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -30,15 +29,8 @@ function initRouter() {
 }
 
 function handleRouteChange() {
-    let hash = window.location.hash.slice(1) || 'main';
-    
-    // Check if it's a zone detail route
-    if (hash.startsWith('zone/')) {
-        const zoneId = hash.split('/')[1];
-        navigateToZoneDetail(zoneId);
-    } else {
-        navigateToPage(hash);
-    }
+    const hash = window.location.hash.slice(1) || 'zones';
+    navigateToPage(hash);
 }
 
 function navigateToPage(pageName) {
@@ -62,20 +54,12 @@ function navigateToPage(pageName) {
         });
         
         // Load page-specific data
-        if (pageName === 'devices') {
+        if (pageName === 'schedule') {
+            loadSchedulePage();
+        } else if (pageName === 'devices') {
             loadDevicesPage();
         }
     }
-}
-
-function navigateToZoneDetail(zoneId) {
-    currentZoneDetail = zoneId;
-    navigateToPage('zoneDetail');
-    renderZoneDetail(zoneId);
-}
-
-function navigateBack() {
-    window.location.hash = '#main';
 }
 
 // ===== WebSocket Connection =====
@@ -114,8 +98,10 @@ function initWebSocket() {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket message received:', data.type);
                 
-                if (data.type === 'zone_update') {
-                    handleZoneUpdate(data.zones);
+                if (data.type === 'zones_update') {
+                    zones = data.data;
+                    renderZones();
+                    updateLastUpdated();
                 }
             } catch (error) {
                 console.error('Error parsing WebSocket message:', error);
@@ -128,32 +114,24 @@ function initWebSocket() {
         };
         
         ws.onclose = () => {
-            console.log('WebSocket closed');
+            console.log('WebSocket disconnected');
             updateConnectionStatus('disconnected');
+            
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+            }
             
             if (!reconnectInterval) {
                 reconnectInterval = setInterval(() => {
-                    console.log('Attempting to reconnect...');
+                    console.log('Attempting to reconnect WebSocket...');
                     initWebSocket();
                 }, 5000);
             }
         };
     } catch (error) {
-        console.error('Failed to create WebSocket:', error);
+        console.error('Error creating WebSocket:', error);
         updateConnectionStatus('error');
-    }
-}
-
-function handleZoneUpdate(updatedZones) {
-    zones = updatedZones;
-    updateLastUpdated();
-    
-    if (currentPage === 'main') {
-        renderZoneList();
-    } else if (currentPage === 'zoneDetail' && currentZoneDetail) {
-        renderZoneDetail(currentZoneDetail);
-    } else if (currentPage === 'devices') {
-        renderDevicesList();
     }
 }
 
@@ -161,10 +139,10 @@ function handleZoneUpdate(updatedZones) {
 async function fetchHubInfo() {
     try {
         const response = await fetch('/api/hub');
-        if (!response.ok) throw new Error('Failed to fetch hub info');
-        
-        hubInfo = await response.json();
-        updateHubInfo();
+        if (response.ok) {
+            hubInfo = await response.json();
+            updateHubInfo();
+        }
     } catch (error) {
         console.error('Error fetching hub info:', error);
     }
@@ -173,37 +151,33 @@ async function fetchHubInfo() {
 async function fetchZones() {
     try {
         const response = await fetch('/api/zones');
-        if (!response.ok) throw new Error('Failed to fetch zones');
-        
-        zones = await response.json();
-        
-        if (currentPage === 'main') {
-            renderZoneList();
-        } else if (currentPage === 'zoneDetail' && currentZoneDetail) {
-            renderZoneDetail(currentZoneDetail);
+        if (response.ok) {
+            const data = await response.json();
+            zones = data.zones || [];
+            renderZones();
         }
-        
-        updateLastUpdated();
     } catch (error) {
         console.error('Error fetching zones:', error);
-        showError('Failed to fetch zones');
+        showError('Failed to load zones');
     }
 }
 
 async function setGlobalMode(mode) {
-    globalMode = mode;
-    updateGlobalModeButtons();
-    
     try {
-        const response = await fetch(`/api/global/override/${mode}`, {
+        globalMode = mode;
+        updateGlobalModeButtons();
+        
+        // Set override for all zones
+        const apiMode = mode === 'home' ? 'normal' : 'away';
+        const response = await fetch(`/api/global/override/${apiMode}`, {
             method: 'POST'
         });
         
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to set global mode');
+            throw new Error('Failed to set global mode');
         }
         
+        // Refresh zones
         await fetchZones();
     } catch (error) {
         console.error('Error setting global mode:', error);
@@ -218,10 +192,10 @@ async function setZoneOverride(zoneId, mode) {
         });
         
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to set zone override');
+            throw new Error('Failed to set zone override');
         }
         
+        // Refresh zones
         await fetchZones();
     } catch (error) {
         console.error('Error setting zone override:', error);
@@ -308,99 +282,54 @@ function updateLastUpdated() {
 function updateGlobalModeButtons() {
     const btnHome = document.getElementById('btnHome');
     const btnAway = document.getElementById('btnAway');
-    const btnEco = document.getElementById('btnEco');
-    const btnComfort = document.getElementById('btnComfort');
     
     btnHome.classList.toggle('active', globalMode === 'home');
     btnAway.classList.toggle('active', globalMode === 'away');
-    btnEco.classList.toggle('active', globalMode === 'eco');
-    btnComfort.classList.toggle('active', globalMode === 'comfort');
 }
 
-// ===== Zone List Rendering =====
-function renderZoneList() {
-    const zoneList = document.getElementById('zoneList');
+// ===== Zone Rendering =====
+function renderZones() {
+    const zonesGrid = document.getElementById('zonesGrid');
     
     if (zones.length === 0) {
-        zoneList.innerHTML = '<div class="loading-message">No zones found</div>';
+        zonesGrid.innerHTML = '<div class="loading-message">No zones found</div>';
         return;
     }
     
-    zoneList.innerHTML = zones.map(zone => createZoneListItem(zone)).join('');
+    zonesGrid.innerHTML = zones.map(zone => createZoneCard(zone)).join('');
 }
 
-function createZoneListItem(zone) {
-    const mode = zone.current_mode || 'normal';
-    const icon = zone.icon || '';
-    
-    // Color-coded dot based on mode
-    let dotColor = '#95a5a6'; // grey for off/normal
-    let modeLabel = 'Following Schedule';
-    
-    if (mode === 'comfort') {
-        dotColor = '#E74C3C';
-        modeLabel = 'Comfort';
-    } else if (mode === 'eco') {
-        dotColor = '#27AE60';
-        modeLabel = 'Eco';
-    } else if (mode === 'away') {
-        dotColor = '#3498DB';
-        modeLabel = 'Away';
-    } else if (mode === 'off') {
-        dotColor = '#95A5A6';
-        modeLabel = 'Off';
-    }
-    
-    // Subtitle for grouped zones
-    const subtitle = zone.rooms && zone.rooms.length > 1 
-        ? `<div class="zone-list-subtitle">${zone.rooms.join(' · ')}</div>` 
-        : '';
-    
-    return `
-        <div class="zone-list-item" onclick="navigateToZoneDetail('${zone.zone_id}')">
-            <div class="zone-list-dot" style="background-color: ${dotColor};"></div>
-            <div class="zone-list-info">
-                <div class="zone-list-name">${icon} ${zone.name}</div>
-                ${subtitle}
-            </div>
-            <div class="zone-list-temp">${zone.current_temperature.toFixed(1)}°C</div>
-            <div class="zone-list-mode">${modeLabel}</div>
-            <div class="zone-list-chevron">›</div>
-        </div>
-    `;
-}
-
-// ===== Zone Detail Rendering =====
-function renderZoneDetail(zoneId) {
-    const zone = zones.find(z => z.zone_id === zoneId);
-    if (!zone) {
-        document.getElementById('zoneDetailContent').innerHTML = '<p>Zone not found</p>';
-        return;
-    }
-    
+function createZoneCard(zone) {
     const mode = zone.current_mode || 'normal';
     const hasOverride = mode !== 'normal';
+    
+    // Device info
     const deviceType = zone.device_type || 'Unknown';
     const supportsTemp = zone.supports_temp_adjust || false;
+    const supportsComfort = zone.supports_comfort || false;
+    const supportsEco = zone.supports_eco || false;
+    
+    // Icon and subtitle
+    const icon = zone.icon || '';
+    const subtitle = zone.rooms && zone.rooms.length > 1 
+        ? `<div class="zone-subtitle">${zone.rooms.join(' · ')}</div>` 
+        : '';
     
     // Product image
     const deviceImage = deviceType === 'NTB-2R' 
         ? '/static/images/ntb-2r.svg' 
-        : '/static/images/r80-rdc-700.svg';
+        : '/static/images/r80-rdc.svg';
     
-    // Device badge
-    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
-    
-    // Status
+    // Status indicator
+    const statusClass = hasOverride ? 'override' : 'schedule';
     const statusIcon = hasOverride ? '⚡' : '📅';
     const statusText = hasOverride 
         ? `Override: ${getModeLabel(mode)}`
         : 'Following Schedule';
     
-    // Temperature controls section
-    const tempSection = supportsTemp ? `
-        <div class="detail-section">
-            <h3>Temperatures</h3>
+    // Temperature controls
+    const tempControls = supportsTemp ? `
+        <div class="temp-controls">
             <div class="temp-control">
                 <span class="temp-label">Comfort temp:</span>
                 <div class="temp-adjuster">
@@ -417,36 +346,33 @@ function renderZoneDetail(zoneId) {
                     <button class="temp-btn" onclick="adjustTemperature('${zone.zone_id}', 'eco', 0.5)">+</button>
                 </div>
             </div>
-            <div class="temp-control temp-locked">
-                <span class="temp-label">Away temp:</span>
-                <div class="temp-value-locked">
-                    ${zone.away_temperature.toFixed(1)}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
-                </div>
-            </div>
         </div>
     ` : `
-        <div class="detail-section">
-            <h3>Temperatures</h3>
-            <div class="manual-temp-notice">
-                <span class="icon">🔧</span>
-                <span>Comfort & Eco temperatures are adjusted manually on the device</span>
-            </div>
-            <div class="temp-control temp-locked">
-                <span class="temp-label">Away temp:</span>
-                <div class="temp-value-locked">
-                    ${zone.away_temperature.toFixed(1)}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
-                </div>
+        <div class="manual-temp-notice">
+            <span class="icon">🔧</span>
+            <span>Comfort & Eco temperatures are adjusted manually on the device</span>
+        </div>
+    `;
+    
+    // Away temperature (locked)
+    const awayTemp = `
+        <div class="temp-control">
+            <span class="temp-label">Away temp:</span>
+            <div class="temp-value-locked">
+                <span class="temp-value">${zone.away_temperature.toFixed(1)}°C</span>
+                <span class="temp-lock">🔒</span>
+                <span class="temp-lock-text">(set by Nobø)</span>
             </div>
         </div>
     `;
     
-    // Override section
-    const overrideSection = `
-        <div class="detail-section">
-            <h3>Override</h3>
+    // Override buttons
+    const overrideButtons = `
+        <div class="override-section">
+            <div class="override-label">Override:</div>
             <div class="override-buttons">
-                <button class="override-btn ${mode === 'comfort' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'comfort')">🔥 Comfort</button>
-                <button class="override-btn ${mode === 'eco' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'eco')">🌿 Eco</button>
+                ${supportsComfort ? `<button class="override-btn ${mode === 'comfort' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'comfort')">🔥 Comfort</button>` : ''}
+                ${supportsEco ? `<button class="override-btn ${mode === 'eco' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'eco')">🌿 Eco</button>` : ''}
                 <button class="override-btn ${mode === 'away' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'away')">🏖️ Away</button>
                 <button class="override-btn ${mode === 'off' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'off')">⭘ Off</button>
             </div>
@@ -454,65 +380,37 @@ function renderZoneDetail(zoneId) {
         </div>
     `;
     
-    // Schedule section
-    const scheduleSection = `
-        <div class="detail-section">
-            <h3>Schedule</h3>
-            <button class="btn btn-primary" onclick="openScheduleModal('${zone.zone_id}')">
-                <span class="icon">📅</span> Set Schedule
-            </button>
-        </div>
-    `;
+    // Device badge
+    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'device-badge-ntb' : 'device-badge-r80';
     
-    // Rooms/Thermostats section
-    const componentsHtml = (zone.components || []).map((serial, idx) => {
-        const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
-        const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : `Device ${idx + 1}`;
-        return `
-            <div class="component-item">
-                <span class="component-name">📟 ${roomName}</span>
-                <span class="component-serial">${displaySerial}</span>
-            </div>
-        `;
-    }).join('');
-    
-    const roomsSection = `
-        <div class="detail-section">
-            <h3>Rooms / Thermostats</h3>
-            <div class="components-list">
-                ${componentsHtml || '<p>No devices assigned</p>'}
-            </div>
-        </div>
-    `;
-    
-    const html = `
-        <div class="zone-detail">
-            <div class="zone-detail-header">
-                <button class="back-btn" onclick="navigateBack()">← Back to Zones</button>
-            </div>
+    return `
+        <div class="zone-card">
+            <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
             
-            <div class="zone-detail-image">
+            <div class="zone-image">
                 <img src="${deviceImage}" alt="${deviceType}">
-                <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
             </div>
             
-            <div class="zone-detail-title">
-                <h2>${zone.icon} ${zone.name}</h2>
+            <div class="zone-header">
+                <div class="zone-name">${icon} ${zone.name}</div>
+                ${subtitle}
             </div>
             
-            <div class="zone-detail-current">
-                <span class="detail-currently">Currently: ${zone.current_temperature.toFixed(1)}°C</span>
-                <span class="detail-status">${statusIcon} ${statusText}</span>
+            <div class="zone-status ${statusClass}">
+                <span class="status-icon">${statusIcon}</span>
+                <span class="status-text">${statusText}</span>
             </div>
             
-            ${tempSection}
-            ${overrideSection}
-            ${scheduleSection}
-            ${roomsSection}
+            <div class="zone-current-temp">
+                <span class="temp-label">Currently:</span>
+                <span class="temp-value">${zone.current_temperature.toFixed(1)}°C</span>
+            </div>
+            
+            ${tempControls}
+            ${awayTemp}
+            ${overrideButtons}
         </div>
     `;
-    
-    document.getElementById('zoneDetailContent').innerHTML = html;
 }
 
 function getModeLabel(mode) {
@@ -546,11 +444,7 @@ function adjustTemperature(zoneId, tempType, delta) {
     } else {
         zone.eco_temperature = newTemp;
     }
-    
-    // Re-render zone detail
-    if (currentPage === 'zoneDetail') {
-        renderZoneDetail(zoneId);
-    }
+    renderZones();
     
     const timerKey = `${zoneId}_${tempType}`;
     if (temperatureTimers[timerKey]) {
@@ -570,22 +464,33 @@ function adjustTemperature(zoneId, tempType, delta) {
     }, 500);
 }
 
-// ===== Schedule Modal =====
-function openScheduleModal(zoneId) {
-    currentScheduleZone = zoneId;
-    const zone = zones.find(z => z.zone_id === zoneId);
+// ===== Schedule Page =====
+function loadSchedulePage() {
+    const zoneSelect = document.getElementById('scheduleZoneSelect');
+    zoneSelect.innerHTML = '<option value="">Select a zone...</option>';
     
-    if (zone) {
-        document.getElementById('scheduleModalZoneName').textContent = zone.name;
-    }
-    
-    document.getElementById('scheduleModal').classList.add('show');
-    loadScheduleFromAPI();
+    zones.forEach(zone => {
+        const option = document.createElement('option');
+        option.value = zone.zone_id;
+        option.textContent = zone.name;
+        zoneSelect.appendChild(option);
+    });
 }
 
-function closeScheduleModal() {
-    document.getElementById('scheduleModal').classList.remove('show');
-    currentScheduleZone = null;
+function loadScheduleForZone() {
+    const zoneSelect = document.getElementById('scheduleZoneSelect');
+    const zoneId = zoneSelect.value;
+    
+    if (!zoneId) {
+        document.getElementById('scheduleEditor').style.display = 'none';
+        return;
+    }
+    
+    currentScheduleZone = zoneId;
+    document.getElementById('scheduleEditor').style.display = 'block';
+    
+    // Load actual schedule from API
+    loadScheduleFromAPI();
 }
 
 async function loadScheduleFromAPI() {
@@ -618,9 +523,9 @@ function renderSchedule() {
         scheduleData = {};
         days.forEach(day => {
             scheduleData[day] = [
-                { start: '00:00', end: '08:00', mode: 'comfort' },
-                { start: '08:00', end: '21:00', mode: 'eco' },
-                { start: '21:00', end: '24:00', mode: 'comfort' }
+                { start: '00:00', end: '07:00', mode: 'eco' },
+                { start: '07:00', end: '22:00', mode: 'comfort' },
+                { start: '22:00', end: '24:00', mode: 'eco' }
             ];
         });
     }
@@ -633,26 +538,21 @@ function renderSchedule() {
             const duration = endMinutes - startMinutes;
             const widthPercent = (duration / (24 * 60)) * 100;
             
-            const modeIcon = block.mode === 'comfort' ? '🔥' : block.mode === 'eco' ? '🌿' : block.mode === 'away' ? '🏖️' : '⭘';
-            const modeClass = `timeline-block-${block.mode}`;
-            
-            return `<div class="timeline-block ${modeClass}" style="width: ${widthPercent}%">
-                <span class="timeline-icon">${modeIcon}</span>
-                <span class="timeline-label">${block.mode.charAt(0).toUpperCase() + block.mode.slice(1)}</span>
-                <span class="timeline-time">${block.start} — ${block.end}</span>
-            </div>`;
+            return `<div class="timeline-block ${block.mode}" style="width: ${widthPercent}%">${block.mode.charAt(0).toUpperCase() + block.mode.slice(1)} ${block.start}-${block.end}</div>`;
         }).join('');
         
         return `
             <div class="schedule-day">
-                <div class="schedule-day-header">
-                    <div class="day-name">${dayNames[index]}</div>
-                    <button class="btn btn-sm" onclick="copyDay('${day}')">Copy to ▼</button>
-                </div>
+                <div class="day-name">${dayNames[index]}</div>
                 <div class="day-timeline">
-                    ${blockHtml || '<div class="timeline-block timeline-block-eco" style="width: 100%">No schedule</div>'}
+                    <div class="timeline-bar">
+                        ${blockHtml || '<div class="timeline-block eco" style="width: 100%">No schedule</div>'}
+                    </div>
                 </div>
-                <button class="btn btn-sm" onclick="addTimeBlock('${day}')">+ Add Time Block</button>
+                <div class="day-actions">
+                    <button class="btn btn-sm" onclick="addTimeBlock('${day}')">+ Add</button>
+                    <button class="btn btn-sm" onclick="copyDay('${day}')">Copy to...</button>
+                </div>
             </div>
         `;
     }).join('');
@@ -687,13 +587,15 @@ async function saveSchedule() {
         }
         
         showError('✅ Schedule saved successfully');
-        setTimeout(() => {
-            closeScheduleModal();
-        }, 1500);
     } catch (error) {
         console.error('Error saving schedule:', error);
         showError(error.message);
     }
+}
+
+function cancelSchedule() {
+    document.getElementById('scheduleEditor').style.display = 'none';
+    document.getElementById('scheduleZoneSelect').value = '';
 }
 
 // ===== Devices Page =====
@@ -721,11 +623,10 @@ function renderDevicesList() {
         if (zone.components && zone.components.length > 0) {
             zone.components.forEach((serial, idx) => {
                 const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
-                const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : 'Device';
                 devicesHtml += `
                     <div class="device-item">
                         <div class="device-info">
-                            <div class="device-serial">📟 ${roomName} — ${displaySerial}</div>
+                            <div class="device-serial">📟 ${displaySerial}</div>
                             <div class="device-type">${zone.device_type}</div>
                             <div class="device-zone">→ ${zone.name}</div>
                         </div>
@@ -908,13 +809,11 @@ function showError(message) {
 window.setGlobalMode = setGlobalMode;
 window.setZoneOverride = setZoneOverride;
 window.adjustTemperature = adjustTemperature;
-window.navigateToZoneDetail = navigateToZoneDetail;
-window.navigateBack = navigateBack;
-window.openScheduleModal = openScheduleModal;
-window.closeScheduleModal = closeScheduleModal;
+window.loadScheduleForZone = loadScheduleForZone;
 window.addTimeBlock = addTimeBlock;
 window.copyDay = copyDay;
 window.saveSchedule = saveSchedule;
+window.cancelSchedule = cancelSchedule;
 window.formatSerialInput = formatSerialInput;
 window.detectDeviceModel = detectDeviceModel;
 window.addDevice = addDevice;

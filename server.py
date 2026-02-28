@@ -697,13 +697,14 @@ async def set_global_override(mode: str):
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
-    # Validate mode
+    # Validate mode - 'home' is an alias for 'normal' (cancel all overrides)
     mode_map = {
         'comfort': 0,
         'eco': 1,
         'away': 2,
         'off': 3,
-        'normal': -1
+        'normal': -1,
+        'home': -1  # Home mode = cancel all overrides, return to schedules
     }
     
     if mode not in mode_map:
@@ -713,7 +714,8 @@ async def set_global_override(mode: str):
         # Demo mode - update all simulated zones
         if DEMO_MODE:
             for demo_zone in DEMO_ZONES:
-                demo_zone['mode'] = mode
+                # For home mode, set to 'normal' which means following schedule
+                demo_zone['mode'] = 'normal' if mode == 'home' else mode
             return {"status": "success", "mode": mode}
         
         # Real hub mode
@@ -722,7 +724,7 @@ async def set_global_override(mode: str):
         
         # Apply override to all zones
         for zone_id in hub.zones.keys():
-            if mode == 'normal':
+            if mode == 'normal' or mode == 'home':
                 hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
             else:
                 hub.create_override('now', 0, mode_map[mode], zone_id)
