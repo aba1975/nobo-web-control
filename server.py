@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # ===== CONFIGURATION =====
 # Replace these with your actual Nobø Hub values
 # You can also set them via environment variables: NOBO_SERIAL and NOBO_IP
-NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '111111111111')  # Replace with your hub's serial number
+NOBO_SERIAL = os.environ.get('NOBO_SERIAL', 'YOUR_SERIAL_HERE')  # Replace with your hub's 12-digit serial number
 NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP address
 
 # ========================
@@ -37,6 +37,8 @@ hub: Optional[pynobo.nobo] = None
 connected_websockets: List[WebSocket] = []
 hub_connected = False
 hub_thread: Optional[threading.Thread] = None
+websocket_lock = asyncio.Lock()  # Lock for thread-safe websocket list access
+connection_lock = threading.Lock()  # Lock for thread-safe hub_connected access
 
 
 # ===== Lifespan Context Manager =====
@@ -98,7 +100,8 @@ def connect_to_hub_sync():
     try:
         logger.info(f"Connecting to Nobø Hub at {NOBO_IP} with serial {NOBO_SERIAL}...")
         hub = pynobo.nobo(NOBO_SERIAL, NOBO_IP, discover=False)
-        hub_connected = True
+        with connection_lock:
+            hub_connected = True
         logger.info("Successfully connected to Nobø Hub")
         
         # Register callback for hub updates
@@ -106,7 +109,8 @@ def connect_to_hub_sync():
         
     except Exception as e:
         logger.error(f"Failed to connect to Nobø Hub: {e}")
-        hub_connected = False
+        with connection_lock:
+            hub_connected = False
         hub = None
         raise
 
@@ -138,7 +142,10 @@ def hub_update_callback(hub_instance):
 
 async def broadcast_zone_update():
     """Send updated zone data to all connected WebSocket clients"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         return
     
     try:
@@ -149,19 +156,20 @@ async def broadcast_zone_update():
             "timestamp": datetime.now().isoformat()
         }
         
-        # Send to all connected clients
-        disconnected = []
-        for websocket in connected_websockets:
-            try:
-                await websocket.send_json(message)
-            except Exception as e:
-                logger.warning(f"Failed to send to websocket: {e}")
-                disconnected.append(websocket)
-        
-        # Remove disconnected clients
-        for ws in disconnected:
-            if ws in connected_websockets:
-                connected_websockets.remove(ws)
+        # Send to all connected clients (thread-safe)
+        async with websocket_lock:
+            disconnected = []
+            for websocket in connected_websockets:
+                try:
+                    await websocket.send_json(message)
+                except Exception as e:
+                    logger.warning(f"Failed to send to websocket: {e}")
+                    disconnected.append(websocket)
+            
+            # Remove disconnected clients
+            for ws in disconnected:
+                if ws in connected_websockets:
+                    connected_websockets.remove(ws)
                 
     except Exception as e:
         logger.error(f"Error broadcasting zone update: {e}")
@@ -169,7 +177,10 @@ async def broadcast_zone_update():
 
 def get_zones_data() -> List[Dict[str, Any]]:
     """Get current data for all zones"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         return []
     
     zones = []
@@ -227,9 +238,12 @@ def determine_zone_mode(zone_id: str, zone: Dict) -> str:
 @app.get("/api/status")
 async def get_status():
     """Get connection status"""
+    with connection_lock:
+        connected = hub_connected
+    
     return {
-        "connected": hub_connected,
-        "hub_serial": NOBO_SERIAL if hub_connected else None,
+        "connected": connected,
+        "hub_serial": NOBO_SERIAL if connected else None,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -237,7 +251,10 @@ async def get_status():
 @app.get("/api/hub")
 async def get_hub_info():
     """Get hub information"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
@@ -257,7 +274,10 @@ async def get_hub_info():
 @app.get("/api/zones")
 async def get_zones():
     """Get all zones with current status"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
@@ -271,7 +291,10 @@ async def get_zones():
 @app.post("/api/zones/{zone_id}/override/{mode}")
 async def set_zone_override(zone_id: str, mode: str):
     """Set override mode for a specific zone"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     # Validate mode
@@ -306,7 +329,10 @@ async def set_zone_override(zone_id: str, mode: str):
 @app.post("/api/zones/{zone_id}/temperature")
 async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
     """Set comfort and/or eco temperature for a zone"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
@@ -324,14 +350,24 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
         
         zone = hub.zones[zone_id]
         
-        # Update temperatures
-        if temps.comfort is not None:
-            comfort_centidegrees = int(temps.comfort * 100)
-            hub.update_zone(zone_id, zone['name'], comfort_centidegrees, zone.get('eco_temperature', 1700))
+        # Get current temperatures to avoid overwriting
+        current_comfort = zone.get('comfort_temperature', 2100)
+        current_eco = zone.get('eco_temperature', 1700)
         
-        if temps.eco is not None:
+        # Update temperatures
+        if temps.comfort is not None and temps.eco is not None:
+            # Both temperatures provided - update together
+            comfort_centidegrees = int(temps.comfort * 100)
             eco_centidegrees = int(temps.eco * 100)
-            hub.update_zone(zone_id, zone['name'], zone.get('comfort_temperature', 2100), eco_centidegrees)
+            hub.update_zone(zone_id, zone['name'], comfort_centidegrees, eco_centidegrees)
+        elif temps.comfort is not None:
+            # Only comfort temperature provided
+            comfort_centidegrees = int(temps.comfort * 100)
+            hub.update_zone(zone_id, zone['name'], comfort_centidegrees, current_eco)
+        elif temps.eco is not None:
+            # Only eco temperature provided
+            eco_centidegrees = int(temps.eco * 100)
+            hub.update_zone(zone_id, zone['name'], current_comfort, eco_centidegrees)
         
         # Wait for update
         await asyncio.sleep(0.5)
@@ -347,7 +383,10 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
 @app.post("/api/global/override/{mode}")
 async def set_global_override(mode: str):
     """Set global override mode for all zones"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     # Validate mode
@@ -382,7 +421,10 @@ async def set_global_override(mode: str):
 @app.get("/api/week_profiles")
 async def get_week_profiles():
     """Get all week profiles"""
-    if not hub_connected or not hub:
+    with connection_lock:
+        connected = hub_connected
+    
+    if not connected or not hub:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
@@ -404,12 +446,19 @@ async def get_week_profiles():
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates"""
     await websocket.accept()
-    connected_websockets.append(websocket)
-    logger.info(f"WebSocket client connected. Total clients: {len(connected_websockets)}")
+    
+    async with websocket_lock:
+        connected_websockets.append(websocket)
+        total = len(connected_websockets)
+    
+    logger.info(f"WebSocket client connected. Total clients: {total}")
     
     try:
         # Send initial data
-        if hub_connected and hub:
+        with connection_lock:
+            connected = hub_connected
+        
+        if connected and hub:
             zones_data = get_zones_data()
             await websocket.send_json({
                 "type": "zones_update",
@@ -431,9 +480,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
     
     finally:
-        if websocket in connected_websockets:
-            connected_websockets.remove(websocket)
-        logger.info(f"WebSocket client disconnected. Total clients: {len(connected_websockets)}")
+        async with websocket_lock:
+            if websocket in connected_websockets:
+                connected_websockets.remove(websocket)
+            total = len(connected_websockets)
+        logger.info(f"WebSocket client disconnected. Total clients: {total}")
 
 
 # ===== Static Files =====

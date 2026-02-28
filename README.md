@@ -2,8 +2,6 @@
 
 A modern, web-based control system for the Nobø Energy Hub, providing local control of your heating system through an intuitive interface inspired by the Mill heating app.
 
-![Nobø Control Interface](docs/screenshot.png) *(Screenshot will be available after first run)*
-
 ## Features
 
 - 🌡️ **Real-time Temperature Monitoring** - See current temperatures for all zones

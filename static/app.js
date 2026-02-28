@@ -1,6 +1,7 @@
 // ===== Global State =====
 let ws = null;
 let reconnectInterval = null;
+let pingInterval = null;  // Store ping interval ID
 let zones = [];
 let hubInfo = {};
 let temperatureTimers = {}; // For debouncing temperature changes
@@ -34,8 +35,13 @@ function initWebSocket() {
                 reconnectInterval = null;
             }
             
+            // Clear old ping interval if it exists
+            if (pingInterval) {
+                clearInterval(pingInterval);
+            }
+            
             // Send ping every 30 seconds to keep connection alive
-            setInterval(() => {
+            pingInterval = setInterval(() => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send('ping');
                 }
@@ -65,6 +71,12 @@ function initWebSocket() {
         ws.onclose = () => {
             console.log('WebSocket disconnected');
             updateConnectionStatus('disconnected');
+            
+            // Clear ping interval
+            if (pingInterval) {
+                clearInterval(pingInterval);
+                pingInterval = null;
+            }
             
             // Attempt to reconnect every 5 seconds
             if (!reconnectInterval) {
