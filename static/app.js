@@ -363,6 +363,8 @@ function createZoneListItem(zone) {
         ? `<div class="zone-list-subtitle">${zone.rooms.join(' · ')}</div>` 
         : '';
     
+    const currentTemp = zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--';
+    
     return `
         <div class="zone-list-item" onclick="navigateToZoneDetail('${zone.zone_id}')">
             <div class="zone-list-dot" style="background-color: ${dotColor};"></div>
@@ -370,7 +372,7 @@ function createZoneListItem(zone) {
                 <div class="zone-list-name">${icon} ${zone.name}</div>
                 ${subtitle}
             </div>
-            <div class="zone-list-temp">${zone.current_temperature.toFixed(1)}°C</div>
+            <div class="zone-list-temp">${currentTemp}°C</div>
             <div class="zone-list-mode">${modeLabel}</div>
             <div class="zone-list-chevron">›</div>
         </div>
@@ -412,7 +414,7 @@ function renderZoneDetail(zoneId) {
                 <span class="temp-label">Comfort temp:</span>
                 <div class="temp-adjuster">
                     <button class="temp-btn" onclick="adjustTemperature('${zone.zone_id}', 'comfort', -0.5)">−</button>
-                    <span class="temp-value">${zone.comfort_temperature.toFixed(1)}°C</span>
+                    <span class="temp-value">${zone.comfort_temperature != null ? zone.comfort_temperature.toFixed(1) : '--'}°C</span>
                     <button class="temp-btn" onclick="adjustTemperature('${zone.zone_id}', 'comfort', 0.5)">+</button>
                 </div>
             </div>
@@ -420,14 +422,14 @@ function renderZoneDetail(zoneId) {
                 <span class="temp-label">Eco temp:</span>
                 <div class="temp-adjuster">
                     <button class="temp-btn" onclick="adjustTemperature('${zone.zone_id}', 'eco', -0.5)">−</button>
-                    <span class="temp-value">${zone.eco_temperature.toFixed(1)}°C</span>
+                    <span class="temp-value">${zone.eco_temperature != null ? zone.eco_temperature.toFixed(1) : '--'}°C</span>
                     <button class="temp-btn" onclick="adjustTemperature('${zone.zone_id}', 'eco', 0.5)">+</button>
                 </div>
             </div>
             <div class="temp-control temp-locked">
                 <span class="temp-label">Away temp:</span>
                 <div class="temp-value-locked">
-                    ${zone.away_temperature.toFixed(1)}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
+                    ${zone.away_temperature != null ? zone.away_temperature.toFixed(1) : '7.0'}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
                 </div>
             </div>
         </div>
@@ -441,7 +443,7 @@ function renderZoneDetail(zoneId) {
             <div class="temp-control temp-locked">
                 <span class="temp-label">Away temp:</span>
                 <div class="temp-value-locked">
-                    ${zone.away_temperature.toFixed(1)}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
+                    ${zone.away_temperature != null ? zone.away_temperature.toFixed(1) : '7.0'}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
                 </div>
             </div>
         </div>
@@ -508,7 +510,7 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-current">
-                <span class="detail-currently">Currently: ${zone.current_temperature.toFixed(1)}°C</span>
+                <span class="detail-currently">Currently: ${zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--'}°C</span>
                 <span class="detail-status">${statusIcon} ${statusText}</span>
             </div>
             
