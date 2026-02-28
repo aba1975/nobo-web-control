@@ -7,10 +7,13 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 - 🌡️ **Real-time Temperature Monitoring** - See current temperatures for all zones
 - 🎛️ **Zone Control** - Individual control of each heating zone
 - 🔥 **Multiple Modes** - Comfort, Eco, Away, and Schedule modes
+- 🔧 **Multi-Device Support** - Supports NTB-2R (full control) and R80 RDC 700 (mode only) devices
+- 🎨 **Device-Aware UI** - Automatically shows/hides controls based on device capabilities
 - 🌐 **Local Control** - No cloud required - works entirely on your local network
 - 📱 **Responsive Design** - Works on desktop, tablet, and mobile devices
 - ⚡ **Live Updates** - WebSocket-based real-time updates without page refresh
 - 🎨 **Modern UI** - Clean, card-based design inspired by the Mill app
+- 🧪 **Demo Mode** - Test the system without a real hub connection
 
 ## Architecture
 
@@ -97,6 +100,61 @@ NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '123456789012')  # Replace with your
 NOBO_IP = os.environ.get('NOBO_IP', '192.168.1.100')  # Replace with your IP
 ```
 
+### Device Type Configuration
+
+The system supports two different device types with different capabilities:
+
+#### Device Types
+
+**1. Nobø NTB-2R (Thermostat Receiver)**
+- Full remote control with mode switching AND temperature adjustment
+- Has a built-in temperature sensor
+- UI shows: current temp, comfort/eco temp with +/- adjustment buttons, and mode buttons
+- Blue badge in the UI
+
+**2. Nobø R80 RDC 700 (Panel Heater Receiver)**
+- Mode control only: can switch between Comfort/Eco/Away/Off remotely
+- Temperature is set **manually on the physical dial on the heater** — cannot be adjusted remotely
+- UI shows: mode buttons only, NO temperature +/- controls
+- Displays a notice: "Temperature is adjusted manually on the device"
+- May still report current temperature if a sensor is connected
+- Grey badge in the UI
+
+#### Configuring Device Types
+
+Edit the `DEVICE_TYPE_MAP` in `server.py` to match your zones and device types:
+
+```python
+# Device type configuration
+DEVICE_TYPE_MAP = {
+    "Large Bathroom": "NTB-2R",
+    "Small Bathroom": "NTB-2R",
+    "Hallway": "NTB-2R",
+    "Upstairs Bedroom North": "R80 RDC 700",
+    "Upstairs Bedroom South": "R80 RDC 700",
+    "Kitchen": "R80 RDC 700",
+    "Living Room": "R80 RDC 700",
+    "Tech Room": "R80 RDC 700",
+    "Master Bedroom": "R80 RDC 700",
+    "Downstairs Bedroom North": "R80 RDC 700",
+    "Downstairs Bedroom South": "R80 RDC 700",
+}
+```
+
+**Important Notes:**
+- Zone names must match exactly as they appear in your Nobø Hub
+- Use the official Nobø app to check your zone names if needed
+- The system will use `DEFAULT_DEVICE_TYPE` ("R80 RDC 700") for any zones not in the map
+- Temperature adjustments for R80 RDC 700 devices will be rejected by the API
+
+### Demo Mode
+
+The system includes a demo mode for testing without a real hub:
+- Automatically enabled when using the test serial `111111111111`
+- Shows all 11 zones with realistic Norwegian indoor temperatures
+- All features work including mode changes and temperature adjustments (for NTB-2R zones)
+- Perfect for testing the UI and learning the system
+
 ## Running the Server
 
 ### Standard Method
@@ -147,12 +205,15 @@ Use the buttons at the top to quickly set all zones to the same mode:
 ### Zone Cards
 
 Each zone is displayed as a card showing:
+- Device type badge (NTB-2R or R80 RDC 700)
+- Device-specific icon (thermostat or panel heater)
 - Zone/room name
 - Current temperature (large display)
 - Target comfort temperature
 - Current mode indicator with color coding
 - Mode selection buttons
-- Temperature adjustment controls
+- Temperature adjustment controls (only for NTB-2R devices)
+- Manual temperature notice (for R80 RDC 700 devices)
 
 ### Mode Selection
 
@@ -162,15 +223,24 @@ Click the mode buttons to change a zone's operating mode:
 - 🏠 **Away** - Minimal heating for when you're away
 - ⭘ **Normal** - Follow the programmed schedule
 
-### Temperature Adjustment
+### Temperature Adjustment (NTB-2R Only)
 
-Use the **+** and **−** buttons to adjust temperatures:
+For zones with NTB-2R devices, use the **+** and **−** buttons to adjust temperatures:
 - **Comfort temperature**: The temperature maintained in comfort mode
 - **Eco temperature**: The reduced temperature for eco mode
 - Temperature range: 7°C to 30°C
 - Changes are sent after 500ms of inactivity (debounced)
 
+**Note:** R80 RDC 700 devices do not support remote temperature adjustment. Temperature must be set manually on the physical dial on the heater.
+
 ## Important Notes
+
+### Device Type Limitations
+
+- **NTB-2R devices**: Full control including remote temperature adjustment
+- **R80 RDC 700 devices**: Mode control only - temperature must be adjusted manually on the device's physical dial
+- The UI automatically shows/hides controls based on device capabilities
+- Attempting to adjust temperature on R80 RDC 700 devices will result in an error message
 
 ### Single Connection Limitation
 
@@ -182,9 +252,13 @@ Use the **+** and **−** buttons to adjust temperatures:
 - No internet connection is required for operation
 - All communication happens locally
 
-### Device Images
+### Device Icons
 
-The current version uses placeholder heater icons for all zones. In a future update, these can be replaced with actual photos of your heating devices.
+The system includes device-specific SVG icons:
+- **NTB-2R**: Thermostat receiver icon (blue badge)
+- **R80 RDC 700**: Panel heater icon (grey badge)
+
+These icons help you quickly identify which type of device is in each zone.
 
 ## API Documentation
 
