@@ -7,10 +7,27 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- Header -->
+    <!-- Header with Navigation -->
     <header class="header">
         <div class="container">
             <h1 class="logo">Nobø Control</h1>
+            
+            <!-- Navigation -->
+            <nav class="nav">
+                <a href="#zones" class="nav-link active" data-page="zones">
+                    <span class="nav-icon">🏠</span>
+                    <span class="nav-label">Zones</span>
+                </a>
+                <a href="#schedule" class="nav-link" data-page="schedule">
+                    <span class="nav-icon">📅</span>
+                    <span class="nav-label">Schedule</span>
+                </a>
+                <a href="#devices" class="nav-link" data-page="devices">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">Devices</span>
+                </a>
+            </nav>
+            
             <div class="connection-status">
                 <span class="status-dot" id="statusDot"></span>
                 <span class="status-text" id="statusText">Connecting...</span>
@@ -21,33 +38,98 @@
     <!-- Main Content -->
     <main class="main-content">
         <div class="container">
-            <!-- Global Controls -->
-            <section class="global-controls">
-                <h2>Global Controls</h2>
-                <div class="global-buttons">
-                    <button class="btn btn-comfort" onclick="setGlobalOverride('comfort')">
-                        <span class="icon">🔥</span> Comfort All
-                    </button>
-                    <button class="btn btn-eco" onclick="setGlobalOverride('eco')">
-                        <span class="icon">🌿</span> Eco All
-                    </button>
-                    <button class="btn btn-away" onclick="setGlobalOverride('away')">
-                        <span class="icon">🏠</span> Away All
-                    </button>
-                    <button class="btn btn-normal" onclick="setGlobalOverride('normal')">
-                        <span class="icon">⭘</span> Back to Schedule
-                    </button>
-                </div>
-            </section>
+            <!-- Zones Page -->
+            <div id="zonesPage" class="page active">
+                <!-- Global Controls -->
+                <section class="global-controls">
+                    <h2>Global Mode</h2>
+                    <div class="global-buttons">
+                        <button class="btn btn-home active" onclick="setGlobalMode('home')" id="btnHome">
+                            <span class="icon">🏠</span> Home
+                        </button>
+                        <button class="btn btn-away" onclick="setGlobalMode('away')" id="btnAway">
+                            <span class="icon">🏖️</span> Away
+                        </button>
+                    </div>
+                    <p class="global-help-text">
+                        <strong>Home:</strong> All zones follow their weekly schedule (default) • 
+                        <strong>Away:</strong> All zones switch to away mode
+                    </p>
+                </section>
 
-            <!-- Zone Cards Grid -->
-            <section class="zones-section">
-                <h2>Zones</h2>
-                <div class="zones-grid" id="zonesGrid">
-                    <!-- Zone cards will be dynamically inserted here -->
-                    <div class="loading-message">Loading zones...</div>
-                </div>
-            </section>
+                <!-- Zone Cards Grid -->
+                <section class="zones-section">
+                    <h2>Zones</h2>
+                    <div class="zones-grid" id="zonesGrid">
+                        <!-- Zone cards will be dynamically inserted here -->
+                        <div class="loading-message">Loading zones...</div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Schedule Page -->
+            <div id="schedulePage" class="page">
+                <section class="schedule-section">
+                    <h2>Schedule Editor</h2>
+                    
+                    <div class="schedule-zone-selector">
+                        <label for="scheduleZoneSelect">Edit schedule for:</label>
+                        <select id="scheduleZoneSelect" onchange="loadScheduleForZone()">
+                            <option value="">Select a zone...</option>
+                        </select>
+                    </div>
+                    
+                    <div id="scheduleEditor" class="schedule-editor" style="display: none;">
+                        <div class="schedule-days" id="scheduleDays">
+                            <!-- Days will be rendered here -->
+                        </div>
+                        
+                        <div class="schedule-actions">
+                            <button class="btn btn-primary" onclick="saveSchedule()">
+                                <span class="icon">💾</span> Save Schedule
+                            </button>
+                            <button class="btn btn-secondary" onclick="cancelSchedule()">
+                                <span class="icon">✖</span> Cancel
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Devices Page -->
+            <div id="devicesPage" class="page">
+                <section class="devices-section">
+                    <h2>Device Management</h2>
+                    
+                    <!-- Add Device Form -->
+                    <div class="device-add-form">
+                        <h3>Add Device</h3>
+                        <div class="form-group">
+                            <label for="deviceSerial">Serial Number:</label>
+                            <input type="text" id="deviceSerial" placeholder="210 000 016 247" 
+                                   maxlength="15" oninput="formatSerialInput(this); detectDeviceModel()">
+                            <span id="detectedModel" class="detected-model"></span>
+                        </div>
+                        <div class="form-group">
+                            <label for="deviceZone">Assign to Zone:</label>
+                            <select id="deviceZone">
+                                <option value="">Select zone...</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="addDevice()">
+                            <span class="icon">➕</span> Add Device
+                        </button>
+                    </div>
+                    
+                    <!-- Registered Devices List -->
+                    <div class="devices-list">
+                        <h3>Registered Devices</h3>
+                        <div id="devicesList">
+                            <div class="loading-message">Loading devices...</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
     </main>
 
