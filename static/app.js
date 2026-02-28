@@ -250,10 +250,29 @@ function createZoneCard(zone) {
     const modeIcon = getModeIcon(modeClass);
     const modeLabel = getModeLabel(modeClass);
     
+    // Device type information
+    const deviceType = zone.device_type || 'R80 RDC 700';
+    const supportsTemp = zone.supports_temp_adjust || false;
+    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'ntb-2r' : 'r80-rdc';
+    const deviceIcon = deviceType === 'NTB-2R' ? '/static/images/ntb-2r.svg' : '/static/images/r80-rdc.svg';
+    
+    // Manual temperature notice for R80 RDC 700
+    const manualTempNotice = !supportsTemp ? `
+        <div class="manual-temp-notice">
+            <span class="icon">🔧</span>
+            <span>Temperature is adjusted manually on the device</span>
+        </div>
+    ` : '';
+    
+    // Temperature controls - only show for devices that support it
+    const tempControlsClass = supportsTemp ? '' : 'no-temp-adjust';
+    
     return `
         <div class="zone-card mode-${modeClass}">
+            <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
+            
             <div class="zone-image">
-                <img src="/static/images/placeholder.svg" alt="${zone.name}">
+                <img src="${deviceIcon}" alt="${zone.name}">
             </div>
             
             <div class="zone-name">${zone.name}</div>
@@ -286,7 +305,9 @@ function createZoneCard(zone) {
                 </button>
             </div>
             
-            <div class="temp-controls">
+            ${manualTempNotice}
+            
+            <div class="temp-controls ${tempControlsClass}">
                 <div class="temp-control">
                     <span class="temp-label">Comfort</span>
                     <div class="temp-adjuster">
@@ -336,6 +357,12 @@ function adjustTemperature(zoneId, tempType, delta) {
     // Find the zone
     const zone = zones.find(z => z.zone_id === zoneId);
     if (!zone) return;
+    
+    // Check if device supports temperature adjustment
+    if (!zone.supports_temp_adjust) {
+        showError(`Temperature cannot be adjusted remotely for ${zone.device_type} devices`);
+        return;
+    }
     
     // Calculate new temperature
     let currentTemp = tempType === 'comfort' ? zone.comfort_temperature : zone.eco_temperature;

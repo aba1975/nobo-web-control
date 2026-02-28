@@ -27,8 +27,44 @@ logger = logging.getLogger(__name__)
 # ===== CONFIGURATION =====
 # Replace these with your actual Nobø Hub values
 # You can also set them via environment variables: NOBO_SERIAL and NOBO_IP
-NOBO_SERIAL = os.environ.get('NOBO_SERIAL', 'YOUR_SERIAL_HERE')  # Replace with your hub's 12-digit serial number
+NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '111111111111')  # Replace with your hub's 12-digit serial number
 NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP address
+
+# Demo mode - set to True to use simulated data instead of connecting to real hub
+DEMO_MODE = NOBO_SERIAL == '111111111111'  # Automatically enable demo mode for test serial
+
+# Device type configuration
+# Maps zone names to device types. Update these to match your actual zone names from the hub.
+DEVICE_TYPE_MAP = {
+    "Large Bathroom": "NTB-2R",
+    "Small Bathroom": "NTB-2R",
+    "Hallway": "NTB-2R",
+    "Upstairs Bedroom North": "R80 RDC 700",
+    "Upstairs Bedroom South": "R80 RDC 700",
+    "Kitchen": "R80 RDC 700",
+    "Living Room": "R80 RDC 700",
+    "Tech Room": "R80 RDC 700",
+    "Master Bedroom": "R80 RDC 700",
+    "Downstairs Bedroom North": "R80 RDC 700",
+    "Downstairs Bedroom South": "R80 RDC 700",
+}
+# Default device type if zone name not found in map
+DEFAULT_DEVICE_TYPE = "R80 RDC 700"
+
+# Demo mode zone data - realistic Norwegian indoor temperatures
+DEMO_ZONES = [
+    {"zone_id": "1", "name": "Large Bathroom", "current_temp": 24.2, "comfort_temp": 24.0, "eco_temp": 21.0, "mode": "comfort"},
+    {"zone_id": "2", "name": "Small Bathroom", "current_temp": 23.8, "comfort_temp": 23.5, "eco_temp": 20.5, "mode": "comfort"},
+    {"zone_id": "3", "name": "Hallway", "current_temp": 21.5, "comfort_temp": 21.0, "eco_temp": 19.0, "mode": "eco"},
+    {"zone_id": "4", "name": "Upstairs Bedroom North", "current_temp": 20.3, "comfort_temp": 21.0, "eco_temp": 18.0, "mode": "eco"},
+    {"zone_id": "5", "name": "Upstairs Bedroom South", "current_temp": 20.8, "comfort_temp": 21.0, "eco_temp": 18.0, "mode": "eco"},
+    {"zone_id": "6", "name": "Kitchen", "current_temp": 21.2, "comfort_temp": 21.0, "eco_temp": 19.0, "mode": "normal"},
+    {"zone_id": "7", "name": "Living Room", "current_temp": 22.1, "comfort_temp": 22.0, "eco_temp": 19.5, "mode": "comfort"},
+    {"zone_id": "8", "name": "Tech Room", "current_temp": 21.8, "comfort_temp": 21.5, "eco_temp": 19.0, "mode": "comfort"},
+    {"zone_id": "9", "name": "Master Bedroom", "current_temp": 20.5, "comfort_temp": 21.0, "eco_temp": 18.5, "mode": "eco"},
+    {"zone_id": "10", "name": "Downstairs Bedroom North", "current_temp": 20.2, "comfort_temp": 20.5, "eco_temp": 18.0, "mode": "eco"},
+    {"zone_id": "11", "name": "Downstairs Bedroom South", "current_temp": 20.7, "comfort_temp": 20.5, "eco_temp": 18.0, "mode": "eco"},
+]
 
 # ========================
 
@@ -90,6 +126,8 @@ class ZoneInfo(BaseModel):
     eco_temperature: float
     current_mode: str
     active_override_id: Optional[str] = None
+    device_type: str
+    supports_temp_adjust: bool
 
 
 # ===== Hub Connection & Callbacks =====
@@ -117,7 +155,14 @@ def connect_to_hub_sync():
 
 async def connect_to_hub():
     """Connect to the Nobø Hub (async wrapper)"""
-    global hub_thread
+    global hub_thread, hub_connected
+    
+    # Check if demo mode is enabled
+    if DEMO_MODE:
+        logger.info("Demo mode enabled - using simulated data")
+        with connection_lock:
+            hub_connected = True
+        return
     
     # Run the synchronous connection in a thread to avoid event loop conflicts
     hub_thread = threading.Thread(target=connect_to_hub_sync, daemon=True)
@@ -180,12 +225,43 @@ def get_zones_data() -> List[Dict[str, Any]]:
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
+        return []
+    
+    # Demo mode - return simulated data
+    if DEMO_MODE:
+        zones = []
+        for demo_zone in DEMO_ZONES:
+            zone_name = demo_zone['name']
+            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
+            supports_temp_adjust = device_type == "NTB-2R"
+            
+            zones.append({
+                'zone_id': demo_zone['zone_id'],
+                'name': zone_name,
+                'current_temperature': demo_zone['current_temp'],
+                'comfort_temperature': demo_zone['comfort_temp'],
+                'eco_temperature': demo_zone['eco_temp'],
+                'current_mode': demo_zone['mode'],
+                'active_override_id': None,
+                'device_type': device_type,
+                'supports_temp_adjust': supports_temp_adjust
+            })
+        return zones
+    
+    # Real hub mode
+    if not hub:
         return []
     
     zones = []
     try:
         for zone_id, zone in hub.zones.items():
+            zone_name = zone.get('name', f'Zone {zone_id}')
+            
+            # Determine device type
+            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
+            supports_temp_adjust = device_type == "NTB-2R"
+            
             # Get current temperature
             current_temp = zone.get('temp', 0.0)
             if current_temp:
@@ -200,12 +276,14 @@ def get_zones_data() -> List[Dict[str, Any]]:
             
             zones.append({
                 'zone_id': str(zone_id),
-                'name': zone.get('name', f'Zone {zone_id}'),
+                'name': zone_name,
                 'current_temperature': current_temp,
                 'comfort_temperature': comfort_temp,
                 'eco_temperature': eco_temp,
                 'current_mode': mode,
-                'active_override_id': zone.get('active_override_id')
+                'active_override_id': zone.get('active_override_id'),
+                'device_type': device_type,
+                'supports_temp_adjust': supports_temp_adjust
             })
     except Exception as e:
         logger.error(f"Error getting zones data: {e}")
@@ -254,10 +332,23 @@ async def get_hub_info():
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
+        # Demo mode - return simulated hub info
+        if DEMO_MODE:
+            return {
+                "name": "Nobø Hub (Demo Mode)",
+                "serial": NOBO_SERIAL,
+                "software_version": "1.4.0 (Simulated)",
+                "connected": True
+            }
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
         # Get hub info from pynobo
         hub_info = {
             "name": getattr(hub, 'hub_name', 'Nobø Hub'),
@@ -277,7 +368,7 @@ async def get_zones():
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
@@ -294,7 +385,7 @@ async def set_zone_override(zone_id: str, mode: str):
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     # Validate mode
@@ -310,6 +401,19 @@ async def set_zone_override(zone_id: str, mode: str):
         raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
     
     try:
+        # Demo mode - update simulated data
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            demo_zone['mode'] = mode
+            return {"status": "success", "zone_id": zone_id, "mode": mode}
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
         if mode == 'normal':
             # Remove override - return to schedule
             hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
@@ -332,10 +436,56 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
+        # Demo mode - validate device type from DEMO_ZONES
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            zone_name = demo_zone['name']
+            device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
+            
+            if device_type != "NTB-2R":
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Temperature cannot be adjusted remotely for {device_type} devices. Temperature is set manually on the physical device."
+                )
+            
+            # In demo mode, just validate and return success
+            if temps.comfort is not None:
+                if not 7 <= temps.comfort <= 30:
+                    raise HTTPException(status_code=400, detail="Comfort temperature must be between 7 and 30°C")
+                demo_zone['comfort_temp'] = temps.comfort
+            if temps.eco is not None:
+                if not 7 <= temps.eco <= 30:
+                    raise HTTPException(status_code=400, detail="Eco temperature must be between 7 and 30°C")
+                demo_zone['eco_temp'] = temps.eco
+            
+            return {"status": "success", "zone_id": zone_id, "comfort": temps.comfort, "eco": temps.eco}
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
+        # Get current zone
+        if zone_id not in hub.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        zone = hub.zones[zone_id]
+        zone_name = zone.get('name', f'Zone {zone_id}')
+        
+        # Check if device supports temperature adjustment
+        device_type = DEVICE_TYPE_MAP.get(zone_name, DEFAULT_DEVICE_TYPE)
+        if device_type != "NTB-2R":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Temperature cannot be adjusted remotely for {device_type} devices. Temperature is set manually on the physical device."
+            )
+        
         # Validate temperatures (7-30°C range)
         if temps.comfort is not None:
             if not 7 <= temps.comfort <= 30:
@@ -343,12 +493,6 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
         if temps.eco is not None:
             if not 7 <= temps.eco <= 30:
                 raise HTTPException(status_code=400, detail="Eco temperature must be between 7 and 30°C")
-        
-        # Get current zone
-        if zone_id not in hub.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        
-        zone = hub.zones[zone_id]
         
         # Get current temperatures to avoid overwriting
         current_comfort = zone.get('comfort_temperature', 2100)
@@ -386,7 +530,7 @@ async def set_global_override(mode: str):
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     # Validate mode
@@ -402,6 +546,16 @@ async def set_global_override(mode: str):
         raise HTTPException(status_code=400, detail=f"Invalid mode: {mode}")
     
     try:
+        # Demo mode - update all simulated zones
+        if DEMO_MODE:
+            for demo_zone in DEMO_ZONES:
+                demo_zone['mode'] = mode
+            return {"status": "success", "mode": mode}
+        
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+        
         # Apply override to all zones
         for zone_id in hub.zones.keys():
             if mode == 'normal':

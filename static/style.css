@@ -222,6 +222,7 @@ body {
     box-shadow: var(--shadow-md);
     transition: var(--transition);
     border: 2px solid transparent;
+    position: relative;
 }
 
 .zone-card:hover {
@@ -243,6 +244,29 @@ body {
 
 .zone-card.mode-off {
     border-color: var(--color-off);
+}
+
+/* Device Type Badge */
+.device-badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge.ntb-2r {
+    background-color: #4a90d9;
+    color: white;
+}
+
+.device-badge.r80-rdc {
+    background-color: #95a5a6;
+    color: white;
 }
 
 .zone-image {
@@ -367,6 +391,27 @@ body {
     display: flex;
     flex-direction: column;
     gap: 15px;
+}
+
+.temp-controls.no-temp-adjust {
+    display: none;
+}
+
+.manual-temp-notice {
+    background-color: #fff8e1;
+    border: 1px solid #ffd54f;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #7a6400;
+}
+
+.manual-temp-notice .icon {
+    font-size: 16px;
 }
 
 .temp-control {
