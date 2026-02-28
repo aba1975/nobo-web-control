@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nobø Control</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <h1 class="logo">Nobø Control</h1>
+            <div class="connection-status">
+                <span class="status-dot" id="statusDot"></span>
+                <span class="status-text" id="statusText">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Global Controls -->
+            <section class="global-controls">
+                <h2>Global Controls</h2>
+                <div class="global-buttons">
+                    <button class="btn btn-comfort" onclick="setGlobalOverride('comfort')">
+                        <span class="icon">🔥</span> Comfort All
+                    </button>
+                    <button class="btn btn-eco" onclick="setGlobalOverride('eco')">
+                        <span class="icon">🌿</span> Eco All
+                    </button>
+                    <button class="btn btn-away" onclick="setGlobalOverride('away')">
+                        <span class="icon">🏠</span> Away All
+                    </button>
+                    <button class="btn btn-normal" onclick="setGlobalOverride('normal')">
+                        <span class="icon">⭘</span> Back to Schedule
+                    </button>
+                </div>
+            </section>
+
+            <!-- Zone Cards Grid -->
+            <section class="zones-section">
+                <h2>Zones</h2>
+                <div class="zones-grid" id="zonesGrid">
+                    <!-- Zone cards will be dynamically inserted here -->
+                    <div class="loading-message">Loading zones...</div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="hub-info" id="hubInfo">
+                <span id="hubName">Nobø Hub</span> · 
+                <span id="hubVersion">Version Unknown</span>
+            </div>
+            <div class="last-updated">
+                Last updated: <span id="lastUpdated">Never</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Error Toast -->
+    <div class="toast" id="errorToast">
+        <span id="errorMessage"></span>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
