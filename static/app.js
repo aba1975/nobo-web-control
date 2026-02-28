@@ -111,6 +111,11 @@ function initWebSocket() {
         
         ws.onmessage = (event) => {
             try {
+                // Ignore pong responses
+                if (event.data === 'pong') {
+                    return;
+                }
+                
                 const data = JSON.parse(event.data);
                 console.log('WebSocket message received:', data.type);
                 
@@ -144,8 +149,9 @@ function initWebSocket() {
     }
 }
 
-function handleZoneUpdate(updatedZones) {
-    zones = updatedZones;
+function handleZoneUpdate(data) {
+    // Handle both {zones: []} and [] formats
+    zones = data.zones || data;
     updateLastUpdated();
     
     if (currentPage === 'main') {
@@ -175,7 +181,8 @@ async function fetchZones() {
         const response = await fetch('/api/zones');
         if (!response.ok) throw new Error('Failed to fetch zones');
         
-        zones = await response.json();
+        const data = await response.json();
+        zones = data.zones || data; // Handle both {zones: []} and [] formats
         
         if (currentPage === 'main') {
             renderZoneList();
