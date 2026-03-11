@@ -106,12 +106,16 @@ function navigateToPage(pageName) {
 
 function navigateToZoneDetail(zoneId) {
     currentZoneDetail = zoneId;
+    window.location.hash = '#zone/' + zoneId;
     navigateToPage('zoneDetail');
     renderZoneDetail(zoneId);
 }
 
 function navigateBack() {
+    currentZoneDetail = null;
     window.location.hash = '#main';
+    navigateToPage('main');
+    renderZoneList();
 }
 
 // ===== WebSocket Connection =====
@@ -436,14 +440,17 @@ function createZoneListItem(zone) {
         ? `<div class="zone-list-subtitle">${zone.rooms.join(' · ')}</div>` 
         : '';
     
-    const currentTemp = zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--';
+    const supportsTemp = zone.supports_temp_adjust || false;
+    const currentTemp = supportsTemp && zone.current_temperature != null
+        ? zone.current_temperature.toFixed(1) + '°C'
+        : '—';
     
     return `
         <div class="zone-list-item ripple-container" 
              onclick="navigateToZoneDetail('${zone.zone_id}')"
              role="button"
              tabindex="0"
-             aria-label="${zone.name}, ${currentTemp}°C, ${modeLabel}"
+             aria-label="${zone.name}, ${currentTemp}, ${modeLabel}"
              onkeydown="if(event.key==='Enter'||event.key===' ')navigateToZoneDetail('${zone.zone_id}')">
             <div class="zone-list-item-top">
                 <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
@@ -458,7 +465,7 @@ function createZoneListItem(zone) {
                 <div class="zone-list-chevron" aria-hidden="true">›</div>
             </div>
             <div class="zone-list-bottom">
-                <div class="zone-list-temp">${currentTemp}°C</div>
+                <div class="zone-list-temp">${currentTemp}</div>
                 <div class="zone-list-mode${modeCssClass ? ' ' + modeCssClass : ''}">${modeLabel}</div>
             </div>
         </div>
@@ -492,6 +499,17 @@ function renderZoneDetail(zoneId) {
         ? `Override: ${getModeLabel(mode)}`
         : 'Following Schedule';
     
+    // Current temperature display
+    const currentTempDisplay = supportsTemp && zone.current_temperature != null
+        ? zone.current_temperature.toFixed(1) + '°C'
+        : '—';
+    const noSensorNotice = !supportsTemp ? `
+        <div class="no-sensor-notice">
+            <span class="icon">📵</span>
+            <span>No built-in temperature sensor — temperature is read locally on the device</span>
+        </div>
+    ` : '';
+
     // Temperature controls section
     const tempSection = supportsTemp ? `
         <div class="detail-section">
@@ -577,13 +595,32 @@ function renderZoneDetail(zoneId) {
             <div class="components-list">
                 ${componentsHtml || '<p>No devices assigned</p>'}
             </div>
+            <div id="inlineAddDeviceForm-${zone.zone_id}" class="inline-add-device-form" style="display:none;">
+                <div class="form-group">
+                    <label for="inlineDeviceSerial-${zone.zone_id}">Serial Number:</label>
+                    <input type="text" id="inlineDeviceSerial-${zone.zone_id}"
+                           placeholder="210 000 016 247" maxlength="15"
+                           oninput="formatSerialInput(this); detectInlineDeviceModel('${zone.zone_id}')">
+                    <span id="inlineDetectedModel-${zone.zone_id}" class="detected-model"></span>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-primary" onclick="addDeviceToZone('${zone.zone_id}')">
+                        <span class="icon">➕</span> Add
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeInlineAddDevice('${zone.zone_id}')">Cancel</button>
+                </div>
+            </div>
+            <button class="btn btn-secondary" id="openInlineAddDeviceBtn-${zone.zone_id}"
+                    onclick="openInlineAddDevice('${zone.zone_id}')" style="margin-top:12px;">
+                <span class="icon">➕</span> Add Device
+            </button>
         </div>
     `;
     
     const html = `
         <div class="zone-detail">
             <div class="zone-detail-header">
-                <button class="back-btn" onclick="navigateBack()">← Back to Zones</button>
+                <button class="back-btn" onclick="navigateBack()">← Back to Main</button>
             </div>
             
             <div class="zone-detail-image">
@@ -596,10 +633,11 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-current">
-                <span class="detail-currently">${zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--'}°C</span>
+                <span class="detail-currently">${currentTempDisplay}</span>
                 <span class="detail-status">${statusIcon} ${statusText}</span>
             </div>
             
+            ${noSensorNotice}
             ${tempSection}
             ${overrideSection}
             ${scheduleSection}
@@ -817,12 +855,28 @@ function renderDevicesList() {
             zone.components.forEach((serial, idx) => {
                 const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
                 const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : 'Device';
+                const supportsTemp = zone.supports_temp_adjust || false;
+                const mode = zone.current_mode || 'normal';
+
+                // Mode badge
+                const modeBadgeClass = mode === 'comfort' ? 'mode-badge-comfort'
+                    : mode === 'eco' ? 'mode-badge-eco'
+                    : mode === 'away' ? 'mode-badge-away'
+                    : mode === 'off' ? 'mode-badge-off'
+                    : 'mode-badge-normal';
+                const modeLabel = getModeLabel(mode);
+                const tempLabel = supportsTemp ? 'Remote adjust ✅' : 'Manual only 🔧';
+
                 devicesHtml += `
                     <div class="device-item">
                         <div class="device-info">
                             <div class="device-serial">📟 ${roomName} — ${displaySerial}</div>
                             <div class="device-type">${zone.device_type}</div>
                             <div class="device-zone">→ ${zone.name}</div>
+                            <div class="device-status-row">
+                                <span class="device-mode-badge ${modeBadgeClass}">${modeLabel}</span>
+                                <span class="device-temp-support">${tempLabel}</span>
+                            </div>
                         </div>
                         <div class="device-actions">
                             <button class="btn btn-sm" onclick="replaceDevice('${serial}', '${zone.zone_id}')">Replace</button>
@@ -857,6 +911,124 @@ function formatSerialInput(input) {
     }
     
     input.value = formatted;
+}
+
+// ===== Inline Add Device (Zone Detail) =====
+function openInlineAddDevice(zoneId) {
+    const form = document.getElementById(`inlineAddDeviceForm-${zoneId}`);
+    const btn = document.getElementById(`openInlineAddDeviceBtn-${zoneId}`);
+    if (form) form.style.display = 'block';
+    if (btn) btn.style.display = 'none';
+}
+
+function closeInlineAddDevice(zoneId) {
+    const form = document.getElementById(`inlineAddDeviceForm-${zoneId}`);
+    const btn = document.getElementById(`openInlineAddDeviceBtn-${zoneId}`);
+    const serialInput = document.getElementById(`inlineDeviceSerial-${zoneId}`);
+    const modelSpan = document.getElementById(`inlineDetectedModel-${zoneId}`);
+    if (form) form.style.display = 'none';
+    if (btn) btn.style.display = '';
+    if (serialInput) serialInput.value = '';
+    if (modelSpan) modelSpan.textContent = '';
+}
+
+function detectInlineDeviceModel(zoneId) {
+    const serialInput = document.getElementById(`inlineDeviceSerial-${zoneId}`);
+    const detectedModel = document.getElementById(`inlineDetectedModel-${zoneId}`);
+    if (!serialInput || !detectedModel) return;
+    const serial = serialInput.value.replace(/\s/g, '');
+    if (serial.length >= 3) {
+        const prefix = serial.slice(0, 3);
+        if (prefix === '210') {
+            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
+            detectedModel.style.color = '#27ae60';
+        } else if (prefix === '160') {
+            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+            detectedModel.style.color = '#27ae60';
+        } else {
+            detectedModel.textContent = '→ Unknown device model';
+            detectedModel.style.color = '#e74c3c';
+        }
+    } else {
+        detectedModel.textContent = '';
+    }
+}
+
+async function addDeviceToZone(zoneId) {
+    const serialInput = document.getElementById(`inlineDeviceSerial-${zoneId}`);
+    if (!serialInput) return;
+    const serial = serialInput.value.replace(/\s/g, '');
+
+    if (!serial || serial.length !== 12) {
+        showToast('Please enter a valid 12-digit serial number', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/devices', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serial, zone_id: zoneId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add device');
+        }
+
+        await fetchZones();
+        showToast('Device added successfully', 'success');
+        // Re-render zone detail to reflect the new device
+        renderZoneDetail(zoneId);
+    } catch (error) {
+        console.error('Error adding device to zone:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// ===== Add Zone Modal =====
+function openAddZoneModal() {
+    const nameInput = document.getElementById('newZoneName');
+    const iconInput = document.getElementById('newZoneIcon');
+    if (nameInput) nameInput.value = '';
+    if (iconInput) iconInput.value = '';
+    document.getElementById('addZoneModal').classList.add('show');
+}
+
+function closeAddZoneModal() {
+    document.getElementById('addZoneModal').classList.remove('show');
+}
+
+async function addZone() {
+    const nameInput = document.getElementById('newZoneName');
+    const iconInput = document.getElementById('newZoneIcon');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const icon = iconInput ? iconInput.value.trim() : '';
+
+    if (!name) {
+        showToast('Please enter a zone name', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/zones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, icon })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add zone');
+        }
+
+        closeAddZoneModal();
+        await fetchZones();
+        showToast(`Zone "${name}" created`, 'success');
+    } catch (error) {
+        console.error('Error adding zone:', error);
+        showToast(error.message, 'error');
+    }
 }
 
 function detectDeviceModel() {
@@ -1089,3 +1261,10 @@ window.addDevice = addDevice;
 window.replaceDevice = replaceDevice;
 window.removeDevice = removeDevice;
 window.dismissToast = dismissToast;
+window.openInlineAddDevice = openInlineAddDevice;
+window.closeInlineAddDevice = closeInlineAddDevice;
+window.detectInlineDeviceModel = detectInlineDeviceModel;
+window.addDeviceToZone = addDeviceToZone;
+window.openAddZoneModal = openAddZoneModal;
+window.closeAddZoneModal = closeAddZoneModal;
+window.addZone = addZone;

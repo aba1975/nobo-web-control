@@ -2555,3 +2555,125 @@ select:focus-visible {
 .temp-value {
     color: var(--color-text-primary);
 }
+
+/* ===== Zone list footer (Add Zone button) ===== */
+.zone-list-footer {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* ===== Device status on Devices page ===== */
+.device-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 14px;
+    background: var(--color-card-bg);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--color-border);
+    margin-bottom: 10px;
+    gap: 12px;
+}
+
+.device-item .device-info {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.device-item .device-serial {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+    font-family: var(--font-mono);
+}
+
+.device-item .device-type {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+}
+
+.device-item .device-zone {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+}
+
+.device-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.device-mode-badge {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(127, 140, 141, 0.12);
+    color: var(--color-text-secondary);
+}
+
+.device-mode-badge.mode-badge-comfort {
+    color: var(--color-comfort);
+    background: rgba(231, 76, 60, 0.12);
+}
+
+.device-mode-badge.mode-badge-eco {
+    color: var(--color-eco);
+    background: rgba(39, 174, 96, 0.12);
+}
+
+.device-mode-badge.mode-badge-away {
+    color: var(--color-away);
+    background: rgba(52, 152, 219, 0.12);
+}
+
+.device-mode-badge.mode-badge-off {
+    color: var(--color-off);
+    background: rgba(149, 165, 166, 0.12);
+}
+
+.device-temp-support {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+}
+
+/* ===== Inline Add Device form (Zone Detail) ===== */
+.inline-add-device-form {
+    background: var(--color-background);
+    border-radius: var(--border-radius-sm);
+    border: 1px solid var(--color-border);
+    padding: 16px;
+    margin-top: 12px;
+}
+
+/* ===== No-sensor notice (Zone Detail) ===== */
+.no-sensor-notice {
+    background-color: rgba(52, 152, 219, 0.08);
+    border: 1px solid rgba(52, 152, 219, 0.3);
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--text-sm);
+    color: var(--color-away);
+}
+
+[data-theme="dark"] .no-sensor-notice {
+    background-color: rgba(52, 152, 219, 0.12);
+    border-color: rgba(52, 152, 219, 0.4);
+    color: #7fb3d3;
+}
+
+[data-theme="dark"] .manual-temp-notice {
+    background-color: rgba(255, 213, 79, 0.08);
+    border-color: rgba(255, 213, 79, 0.3);
+    color: #ffd54f;
+}

@@ -79,7 +79,7 @@ DEMO_ZONES = [
         "icon": "🛏️",
         "rooms": ["North", "South"],
         "components": ["160004028112", "160004028113"],  # R80 RDC 700 devices
-        "current_temp": 20.3,
+        "current_temp": None,  # R80 has no built-in temperature sensor
         "comfort_temp": 21.0,
         "eco_temp": 18.0,
         "mode": "eco",
@@ -91,7 +91,7 @@ DEMO_ZONES = [
         "icon": "🍳🛋️",
         "rooms": ["Kitchen", "Living Room"],
         "components": ["160004028114", "160004028115"],  # R80 RDC 700 devices
-        "current_temp": 21.2,
+        "current_temp": None,  # R80 has no built-in temperature sensor
         "comfort_temp": 21.0,
         "eco_temp": 19.0,
         "mode": "normal",
@@ -103,7 +103,7 @@ DEMO_ZONES = [
         "icon": "💻",
         "rooms": ["Tech Room"],
         "components": ["160004028116"],  # R80 RDC 700 device
-        "current_temp": 21.8,
+        "current_temp": None,  # R80 has no built-in temperature sensor
         "comfort_temp": 21.5,
         "eco_temp": 19.0,
         "mode": "comfort",
@@ -115,7 +115,7 @@ DEMO_ZONES = [
         "icon": "🛏️",
         "rooms": ["Master", "North", "South"],
         "components": ["160004028117", "160004028118", "160004028119"],  # R80 RDC 700 devices
-        "current_temp": 20.5,
+        "current_temp": None,  # R80 has no built-in temperature sensor
         "comfort_temp": 20.5,
         "eco_temp": 18.0,
         "mode": "eco",
@@ -246,6 +246,11 @@ class ZoneInfo(BaseModel):
     active_override_id: Optional[str] = None
     device_type: str
     supports_temp_adjust: bool
+
+
+class ZoneAdd(BaseModel):
+    name: str
+    icon: str = ""
 
 
 # ===== Hub Connection & Callbacks =====
@@ -526,6 +531,44 @@ async def get_zones():
         return {"zones": zones_data}
     except Exception as e:
         logger.error(f"Error getting zones: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/zones")
+async def add_zone(zone: ZoneAdd):
+    """Create a new zone"""
+    with connection_lock:
+        connected = hub_connected
+
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+
+    try:
+        if DEMO_MODE:
+            # Auto-increment zone_id based on current max
+            new_id = str(max((int(z['zone_id']) for z in DEMO_ZONES), default=0) + 1)
+            DEMO_ZONES.append({
+                "zone_id": new_id,
+                "name": zone.name.strip(),
+                "icon": zone.icon.strip(),
+                "rooms": [],
+                "components": [],
+                "current_temp": None,
+                "comfort_temp": 21.0,
+                "eco_temp": 18.0,
+                "mode": "normal",
+                "override_id": None,
+            })
+            logger.info(f"Demo mode: Zone '{zone.name}' created with id {new_id}")
+            return {"status": "success", "zone_id": new_id, "name": zone.name}
+
+        # Real hub mode - not yet implemented
+        raise HTTPException(status_code=501, detail="Add zone not yet implemented for real hub")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding zone: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -910,7 +953,11 @@ async def get_devices():
                     'serial_display': zone['components_display'][i] if i < len(zone['components_display']) else format_serial_display(serial),
                     'device_type': device_name,
                     'zone_id': zone['zone_id'],
-                    'zone_name': zone['name']
+                    'zone_name': zone['name'],
+                    'supports_comfort': supports_comfort,
+                    'supports_eco': supports_eco,
+                    'supports_temp_adjust': supports_comfort or supports_eco,
+                    'current_mode': zone.get('current_mode', 'normal'),
                 })
         
         return {"devices": devices}

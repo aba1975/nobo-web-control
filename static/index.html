@@ -87,6 +87,11 @@
                         <!-- Zone list items will be dynamically inserted here -->
                         <div class="loading-message">Loading zones...</div>
                     </div>
+                    <div class="zone-list-footer">
+                        <button class="btn btn-secondary" onclick="openAddZoneModal()">
+                            <span class="icon">➕</span> Add Zone
+                        </button>
+                    </div>
                 </section>
             </div>
 
@@ -166,6 +171,32 @@
                 <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="saveSchedule()">
                     <span class="icon">💾</span> Save Schedule
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Zone Modal -->
+    <div id="addZoneModal" class="modal">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>➕ Add Zone</h2>
+                <button class="modal-close" onclick="closeAddZoneModal()" aria-label="Close add zone modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="newZoneName">Zone Name:</label>
+                    <input type="text" id="newZoneName" placeholder="e.g. Office" maxlength="64">
+                </div>
+                <div class="form-group">
+                    <label for="newZoneIcon">Icon (emoji, optional):</label>
+                    <input type="text" id="newZoneIcon" placeholder="e.g. 🏠" maxlength="8">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddZoneModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addZone()">
+                    <span class="icon">➕</span> Create Zone
                 </button>
             </div>
         </div>
