@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2c3e50" id="metaThemeColor">
     <title>Nobø Control</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -13,20 +14,38 @@
             <h1 class="logo">Nobø Control</h1>
             
             <!-- Navigation -->
-            <nav class="nav">
+            <nav class="nav" aria-label="Main navigation">
                 <a href="#main" class="nav-link active" data-page="main">
-                    <span class="nav-icon">🏠</span>
+                    <span class="nav-icon" aria-hidden="true">🏠</span>
                     <span class="nav-label">Main</span>
                 </a>
                 <a href="#devices" class="nav-link" data-page="devices">
-                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-icon" aria-hidden="true">⚙️</span>
                     <span class="nav-label">Devices</span>
                 </a>
             </nav>
             
-            <div class="connection-status">
-                <span class="status-dot" id="statusDot"></span>
-                <span class="status-text" id="statusText">Connecting...</span>
+            <div class="header-right">
+                <div class="connection-status">
+                    <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+                    <span class="status-text" id="statusText">Connecting...</span>
+                </div>
+                <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark/light theme">
+                    <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="theme-icon moon-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
             </div>
         </div>
     </header>
@@ -128,17 +147,15 @@
         </div>
     </footer>
 
-    <!-- Error Toast -->
-    <div class="toast" id="errorToast">
-        <span id="errorMessage"></span>
-    </div>
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="false"></div>
 
     <!-- Schedule Modal -->
     <div id="scheduleModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2>📅 Schedule — <span id="scheduleModalZoneName"></span></h2>
-                <button class="modal-close" onclick="closeScheduleModal()">✕</button>
+                <button class="modal-close" onclick="closeScheduleModal()" aria-label="Close schedule modal">✕</button>
             </div>
             <div class="modal-body">
                 <div id="scheduleDays" class="schedule-days">

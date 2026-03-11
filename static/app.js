@@ -14,11 +14,47 @@ let currentZoneDetail = null;
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Nobø Control - Initializing...');
+    initThemeToggle();
     initRouter();
     initWebSocket();
     fetchHubInfo();
     fetchZones();
 });
+
+// ===== Theme Toggle =====
+function initThemeToggle() {
+    const toggle = document.getElementById('themeToggle');
+    if (!toggle) return;
+
+    // Determine initial theme
+    const saved = localStorage.getItem('nobo-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = saved || (prefersDark ? 'dark' : 'light');
+    applyTheme(theme);
+
+    toggle.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        applyTheme(next);
+        localStorage.setItem('nobo-theme', next);
+    });
+
+    // Listen for system preference changes (when no saved preference)
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('nobo-theme')) {
+            applyTheme(e.matches ? 'dark' : 'light');
+        }
+    });
+}
+
+function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    // Update meta theme-color
+    const metaThemeColor = document.getElementById('metaThemeColor');
+    if (metaThemeColor) {
+        metaThemeColor.setAttribute('content', theme === 'dark' ? '#1a1d23' : '#2c3e50');
+    }
+}
 
 // ===== Router =====
 function initRouter() {
@@ -177,6 +213,11 @@ async function fetchHubInfo() {
 }
 
 async function fetchZones() {
+    // Show skeleton loaders on first load
+    if (zones.length === 0 && currentPage === 'main') {
+        showSkeletonLoaders();
+    }
+    
     try {
         const response = await fetch('/api/zones');
         if (!response.ok) throw new Error('Failed to fetch zones');
@@ -193,7 +234,7 @@ async function fetchZones() {
         updateLastUpdated();
     } catch (error) {
         console.error('Error fetching zones:', error);
-        showError('Failed to fetch zones');
+        showToast('Failed to fetch zones', 'error');
     }
 }
 
@@ -212,9 +253,10 @@ async function setGlobalMode(mode) {
         }
         
         await fetchZones();
+        showToast(`Global mode set to ${getModeLabel(mode)}`, 'success');
     } catch (error) {
         console.error('Error setting global mode:', error);
-        showError('Failed to set global mode');
+        showToast('Failed to set global mode', 'error');
     }
 }
 
@@ -230,9 +272,14 @@ async function setZoneOverride(zoneId, mode) {
         }
         
         await fetchZones();
+        if (mode === 'normal') {
+            showToast('Override cancelled — returning to schedule', 'info');
+        } else {
+            showToast(`Zone set to ${getModeLabel(mode)}`, 'success');
+        }
     } catch (error) {
         console.error('Error setting zone override:', error);
-        showError('Failed to set zone override');
+        showToast('Failed to set zone override', 'error');
     }
 }
 
@@ -254,7 +301,7 @@ async function setZoneTemperature(zoneId, comfort, eco) {
         }
     } catch (error) {
         console.error('Error setting temperature:', error);
-        showError(error.message);
+        showToast(error.message, 'error');
     }
 }
 
@@ -336,23 +383,46 @@ function renderZoneList() {
     zoneList.innerHTML = zones.map(zone => createZoneListItem(zone)).join('');
 }
 
+function showSkeletonLoaders() {
+    const zoneList = document.getElementById('zoneList');
+    if (!zoneList) return;
+    const skeletonCount = 3;
+    zoneList.innerHTML = Array.from({ length: skeletonCount }, () => `
+        <div class="skeleton-zone-item" aria-hidden="true">
+            <div class="skeleton-top">
+                <div class="skeleton-dot"></div>
+                <div class="skeleton-text skeleton-name"></div>
+            </div>
+            <div class="skeleton-bottom">
+                <div class="skeleton-temp"></div>
+                <div class="skeleton-mode"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
 function createZoneListItem(zone) {
     const mode = zone.current_mode || 'normal';
     const icon = zone.icon || '';
     
     // Color-coded dot based on mode
     let dotColor = '#95a5a6'; // grey for off/normal
-    let modeLabel = 'Following Schedule';
+    let modeLabel = 'Schedule';
+    let modeCssClass = '';
+    const hasOverride = mode !== 'normal';
     
     if (mode === 'comfort') {
         dotColor = '#E74C3C';
         modeLabel = 'Comfort';
+        modeCssClass = 'mode-comfort';
     } else if (mode === 'eco') {
         dotColor = '#27AE60';
         modeLabel = 'Eco';
+        modeCssClass = 'mode-eco';
     } else if (mode === 'away') {
         dotColor = '#3498DB';
         modeLabel = 'Away';
+        modeCssClass = 'mode-away';
     } else if (mode === 'off') {
         dotColor = '#95A5A6';
         modeLabel = 'Off';
@@ -366,15 +436,28 @@ function createZoneListItem(zone) {
     const currentTemp = zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--';
     
     return `
-        <div class="zone-list-item" onclick="navigateToZoneDetail('${zone.zone_id}')">
-            <div class="zone-list-dot" style="background-color: ${dotColor};"></div>
-            <div class="zone-list-info">
-                <div class="zone-list-name">${icon} ${zone.name}</div>
-                ${subtitle}
+        <div class="zone-list-item ripple-container" 
+             onclick="navigateToZoneDetail('${zone.zone_id}')"
+             role="button"
+             tabindex="0"
+             aria-label="${zone.name}, ${currentTemp}°C, ${modeLabel}"
+             onkeydown="if(event.key==='Enter'||event.key===' ')navigateToZoneDetail('${zone.zone_id}')">
+            <div class="zone-list-item-top">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                    <div class="zone-list-dot${hasOverride ? ' active-override' : ''}" 
+                         style="background-color: ${dotColor};" 
+                         aria-hidden="true"></div>
+                    <div class="zone-list-info">
+                        <div class="zone-list-name">${icon} ${zone.name}</div>
+                        ${subtitle}
+                    </div>
+                </div>
+                <div class="zone-list-chevron" aria-hidden="true">›</div>
             </div>
-            <div class="zone-list-temp">${currentTemp}°C</div>
-            <div class="zone-list-mode">${modeLabel}</div>
-            <div class="zone-list-chevron">›</div>
+            <div class="zone-list-bottom">
+                <div class="zone-list-temp">${currentTemp}°C</div>
+                <div class="zone-list-mode${modeCssClass ? ' ' + modeCssClass : ''}">${modeLabel}</div>
+            </div>
         </div>
     `;
 }
@@ -510,7 +593,7 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-current">
-                <span class="detail-currently">Currently: ${zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--'}°C</span>
+                <span class="detail-currently">${zone.current_temperature != null ? zone.current_temperature.toFixed(1) : '--'}°C</span>
                 <span class="detail-status">${statusIcon} ${statusText}</span>
             </div>
             
@@ -541,7 +624,7 @@ function adjustTemperature(zoneId, tempType, delta) {
     if (!zone) return;
     
     if (!zone.supports_temp_adjust) {
-        showError(`Temperature cannot be adjusted remotely for ${zone.device_type} devices`);
+        showToast(`Temperature cannot be adjusted remotely for ${zone.device_type} devices`, 'warning');
         return;
     }
     
@@ -611,7 +694,7 @@ async function loadScheduleFromAPI() {
         renderSchedule();
     } catch (error) {
         console.error('Error loading schedule:', error);
-        showError('Failed to load schedule');
+        showToast('Failed to load schedule', 'error');
         // Render with default sample data
         renderSchedule();
     }
@@ -673,11 +756,11 @@ function timeToMinutes(timeStr) {
 }
 
 function addTimeBlock(day) {
-    showError('Schedule editing functionality coming soon');
+    showToast('Schedule editing coming soon', 'info');
 }
 
 function copyDay(day) {
-    showError('Copy day functionality coming soon');
+    showToast('Copy day functionality coming soon', 'info');
 }
 
 async function saveSchedule() {
@@ -695,13 +778,13 @@ async function saveSchedule() {
             throw new Error(error.detail || 'Failed to save schedule');
         }
         
-        showError('✅ Schedule saved successfully');
+        showToast('Schedule saved successfully', 'success');
         setTimeout(() => {
             closeScheduleModal();
         }, 1500);
     } catch (error) {
         console.error('Error saving schedule:', error);
-        showError(error.message);
+        showToast(error.message, 'error');
     }
 }
 
@@ -804,12 +887,12 @@ async function addDevice() {
     const zoneId = zoneSelect.value;
     
     if (!serial || serial.length !== 12) {
-        showError('Please enter a valid 12-digit serial number');
+        showToast('Please enter a valid 12-digit serial number', 'warning');
         return;
     }
     
     if (!zoneId) {
-        showError('Please select a zone');
+        showToast('Please select a zone', 'warning');
         return;
     }
     
@@ -834,10 +917,10 @@ async function addDevice() {
         await fetchZones();
         renderDevicesList();
         
-        showError('✅ Device added successfully');
+        showToast('Device added successfully', 'success');
     } catch (error) {
         console.error('Error adding device:', error);
-        showError(error.message);
+        showToast(error.message, 'error');
     }
 }
 
@@ -847,7 +930,7 @@ async function replaceDevice(serial, zoneId) {
     
     const cleanSerial = newSerial.replace(/\s/g, '');
     if (cleanSerial.length !== 12) {
-        showError('Serial number must be 12 digits');
+        showToast('Serial number must be 12 digits', 'warning');
         return;
     }
     
@@ -867,10 +950,10 @@ async function replaceDevice(serial, zoneId) {
         await fetchZones();
         renderDevicesList();
         
-        showError('✅ Device replaced successfully');
+        showToast('Device replaced successfully', 'success');
     } catch (error) {
         console.error('Error replacing device:', error);
-        showError(error.message);
+        showToast(error.message, 'error');
     }
 }
 
@@ -893,25 +976,98 @@ async function removeDevice(serial, zoneId) {
         await fetchZones();
         renderDevicesList();
         
-        showError('✅ Device removed successfully');
+        showToast('Device removed successfully', 'success');
     } catch (error) {
         console.error('Error removing device:', error);
-        showError(error.message);
+        showToast(error.message, 'error');
     }
 }
 
-// ===== Error Toast =====
-function showError(message) {
-    const toast = document.getElementById('errorToast');
-    const errorMessage = document.getElementById('errorMessage');
-    
-    errorMessage.textContent = message;
-    toast.classList.add('show');
-    
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 5000);
+// ===== Toast Notifications =====
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const icons = {
+        success: '✅',
+        error: '❌',
+        warning: '⚠️',
+        info: 'ℹ️'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <span class="toast-icon" aria-hidden="true">${icons[type] || icons.info}</span>
+        <div class="toast-body">
+            <span class="toast-message">${escapeHtml(message)}</span>
+        </div>
+        <button class="toast-close" onclick="dismissToast(this.parentElement)" aria-label="Dismiss notification">×</button>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto-dismiss after 4 seconds
+    const timeout = setTimeout(() => {
+        dismissToast(toast);
+    }, 4000);
+
+    // Store timeout so manual close can clear it
+    toast._dismissTimeout = timeout;
 }
+
+function dismissToast(toast) {
+    if (!toast || toast._dismissed) return;
+    toast._dismissed = true;
+    if (toast._dismissTimeout) {
+        clearTimeout(toast._dismissTimeout);
+    }
+    toast.classList.add('toast-dismissing');
+    toast.addEventListener('animationend', () => {
+        toast.remove();
+    }, { once: true });
+    // Fallback removal
+    setTimeout(() => { toast.remove(); }, 400);
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
+// Backwards compatibility alias
+function showError(message) {
+    // Detect success messages by leading emoji
+    if (message && message.startsWith('✅')) {
+        showToast(message.replace('✅ ', '').replace('✅', ''), 'success');
+    } else {
+        showToast(message, 'error');
+    }
+}
+
+// ===== Ripple Effect =====
+function addRipple(event) {
+    const element = event.currentTarget;
+    if (!element.classList.contains('ripple-container')) return;
+
+    const rect = element.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple';
+    ripple.style.left = `${event.clientX - rect.left}px`;
+    ripple.style.top = `${event.clientY - rect.top}px`;
+    element.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+}
+
+// Attach ripple to dynamically created elements via delegation
+document.addEventListener('click', (event) => {
+    const target = event.target.closest('.ripple-container');
+    if (target) {
+        addRipple({ currentTarget: target, clientX: event.clientX, clientY: event.clientY });
+    }
+});
 
 // ===== Export functions to global scope =====
 window.setGlobalMode = setGlobalMode;
@@ -929,3 +1085,4 @@ window.detectDeviceModel = detectDeviceModel;
 window.addDevice = addDevice;
 window.replaceDevice = replaceDevice;
 window.removeDevice = removeDevice;
+window.dismissToast = dismissToast;
