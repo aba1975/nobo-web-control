@@ -405,7 +405,7 @@ function createZoneListItem(zone) {
     const mode = zone.current_mode || 'normal';
     const icon = zone.icon || '';
     
-    // Color-coded dot based on mode
+    // Color-coded dot and label based on mode
     let dotColor = '#95a5a6'; // grey for off/normal
     let modeLabel = 'Schedule';
     let modeCssClass = '';
@@ -426,6 +426,9 @@ function createZoneListItem(zone) {
     } else if (mode === 'off') {
         dotColor = '#95A5A6';
         modeLabel = 'Off';
+    } else {
+        // 'normal' — following schedule
+        modeLabel = 'Schedule';
     }
     
     // Subtitle for grouped zones

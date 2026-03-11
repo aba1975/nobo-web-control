@@ -341,7 +341,7 @@ body {
 
 .global-controls h2,
 .zones-section h2 {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: 700;
     letter-spacing: 1.5px;
     text-transform: uppercase;
@@ -1900,7 +1900,7 @@ body {
 }
 
 .detail-section h3 {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: 700;
     color: var(--color-text-secondary);
     text-transform: uppercase;
@@ -2490,9 +2490,9 @@ body {
     *,
     *::before,
     *::after {
-        animation-duration: 0.01ms !important;
+        animation-duration: 0ms !important;
         animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+        transition-duration: 0ms !important;
     }
 
     .theme-toggle:hover {
