@@ -19,6 +19,7 @@
 
 $InstallDir     = "C:\nobo-web-control"
 $PythonVersion  = "3.10"                                         # Minimum required
+$PythonExe      = $null                                          # Resolved in Step 1 (python / py / python3)
 $ServerPort     = 8000
 $NoboSerial     = "111111111111"                                  # 12-digit hub serial (demo default)
 $NoboIP         = "10.0.0.100"                                   # Hub IP address
@@ -46,26 +47,35 @@ if (-not $DemoMode) {
 Write-Host "`n=== Checking prerequisites ===" -ForegroundColor Cyan
 $allOk = $true
 
-# Check Python
-try {
-    $pyVerOutput = & python --version 2>&1
-    if ($pyVerOutput -match "Python (\d+)\.(\d+)") {
-        $major = [int]$Matches[1]
-        $minor = [int]$Matches[2]
-        $minMajor, $minMinor = $PythonVersion.Split('.') | ForEach-Object { [int]$_ }
-        if ($major -gt $minMajor -or ($major -eq $minMajor -and $minor -ge $minMinor)) {
-            Write-Host "  [PASS] Python: $pyVerOutput" -ForegroundColor Green
-        } else {
-            Write-Host "  [FAIL] Python $pyVerOutput found but $PythonVersion+ required." -ForegroundColor Red
-            Write-Host "         Download: https://www.python.org/downloads/" -ForegroundColor Yellow
-            $allOk = $false
+# Check Python — try multiple executable names in order
+$PythonCandidates = @("python", "py", "python3")
+$PythonExe = $null
+
+foreach ($candidate in $PythonCandidates) {
+    try {
+        $pyVerOutput = & $candidate --version 2>&1
+        if ($pyVerOutput -match 'Python\s+([\d.]+)') {
+            $foundVersion = [version]$Matches[1]
+            $minVersion   = [version]$PythonVersion
+            if ($foundVersion -ge $minVersion) {
+                $PythonExe = $candidate
+                Write-Host "  [PASS] Python: $pyVerOutput (via '$candidate')" -ForegroundColor Green
+                break
+            } else {
+                Write-Host "  [INFO] '$candidate' reports $pyVerOutput but $PythonVersion+ required — skipping." -ForegroundColor Yellow
+            }
         }
-    } else {
-        throw "Unexpected output: $pyVerOutput"
+    } catch {
+        # candidate not found; try the next one
     }
-} catch {
-    Write-Host "  [FAIL] Python not found." -ForegroundColor Red
+}
+
+if (-not $PythonExe) {
+    Write-Host "  [FAIL] Python $PythonVersion+ not found." -ForegroundColor Red
+    Write-Host "         Tried: $($PythonCandidates -join ', ')" -ForegroundColor Yellow
     Write-Host "         Download: https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "         After installing, check 'Add Python to PATH', or use the Python Launcher." -ForegroundColor Yellow
+    Write-Host "         Try running manually: py --version  or  python3 --version" -ForegroundColor Yellow
     $allOk = $false
 }
 
@@ -170,6 +180,11 @@ try {
 Write-Host "`n=== Creating Python virtual environment ===" -ForegroundColor Cyan
 Set-Location $InstallDir
 
+if (-not $PythonExe) {
+    Write-Host "  [ERROR] PythonExe is not set. Ensure Step 1 (Python detection) completed successfully." -ForegroundColor Red
+    return
+}
+
 $venvDir    = Join-Path $InstallDir "venv"
 $activatePs = Join-Path $venvDir "Scripts\Activate.ps1"
 
@@ -177,9 +192,9 @@ try {
     if (Test-Path $venvDir) {
         Write-Host "  [INFO] Virtual environment already exists. Skipping creation." -ForegroundColor Yellow
     } else {
-        Write-Host "  Creating venv in $venvDir ..." -ForegroundColor Cyan
-        & python -m venv venv
-        if ($LASTEXITCODE -ne 0) { throw "python -m venv failed (exit code $LASTEXITCODE)" }
+        Write-Host "  Creating venv in $venvDir (using '$PythonExe') ..." -ForegroundColor Cyan
+        & $PythonExe -m venv venv
+        if ($LASTEXITCODE -ne 0) { throw "$PythonExe -m venv failed (exit code $LASTEXITCODE)" }
         Write-Host "  [OK] Virtual environment created." -ForegroundColor Green
     }
 
@@ -187,7 +202,7 @@ try {
     if (Test-Path $activatePs) {
         & $activatePs
         Write-Host "  [OK] Virtual environment activated." -ForegroundColor Green
-        $pyInVenv = & python -c "import sys; print(sys.executable)" 2>&1
+        $pyInVenv = & "$InstallDir\venv\Scripts\python.exe" -c "import sys; print(sys.executable)" 2>&1
         Write-Host "  Python in use: $pyInVenv" -ForegroundColor Cyan
     } else {
         throw "Activate.ps1 not found at $activatePs"
@@ -323,8 +338,11 @@ foreach ($rel in $requiredFiles) {
 $activatePs = Join-Path $InstallDir "venv\Scripts\Activate.ps1"
 if (Test-Path $activatePs) { & $activatePs }
 
+$venvPython = Join-Path $InstallDir "venv\Scripts\python.exe"
+$pyRunner   = if (Test-Path $venvPython) { $venvPython } else { $PythonExe }
+
 Write-Host "`n  Checking Python modules ..." -ForegroundColor Cyan
-$moduleCheck = & python -c "import fastapi; import pynobo; import uvicorn; print('All modules OK')" 2>&1
+$moduleCheck = & $pyRunner -c "import fastapi; import pynobo; import uvicorn; print('All modules OK')" 2>&1
 if ($moduleCheck -match "All modules OK") {
     Write-Host "  [OK] $moduleCheck" -ForegroundColor Green
 } else {
@@ -378,7 +396,14 @@ Write-Host "  Access the UI at: http://localhost:$ServerPort" -ForegroundColor G
 Write-Host "  Press Ctrl+C to stop the server.`n" -ForegroundColor Yellow
 
 # Start the server (blocking — runs until Ctrl+C)
-& python server.py
+$venvPython = Join-Path $InstallDir "venv\Scripts\python.exe"
+if (Test-Path $venvPython) {
+    & $venvPython server.py
+} elseif ($PythonExe) {
+    & $PythonExe server.py
+} else {
+    Write-Host "  [ERROR] No Python executable found. Run Steps 1 and 4 first." -ForegroundColor Red
+}
 
 # Alternatively, use uvicorn directly:
 # & uvicorn server:app --host 0.0.0.0 --port $ServerPort --reload
@@ -407,7 +432,7 @@ Set-Location "$InstallDir"
 
 Write-Host "Starting Nobø Web Control on port $ServerPort ..." -ForegroundColor Cyan
 Start-Process "http://localhost:$ServerPort"
-& python server.py
+& "$InstallDir\venv\Scripts\python.exe" server.py
 "@
 
 try {
@@ -443,8 +468,11 @@ try {
 # ╚══════════════════════════════════════════════════════════════╝
 #
 # ── Python not found ─────────────────────────────────────────────
-#   Download Python 3.10+ from https://www.python.org/downloads/
+#   Step 1 now tries 'python', 'py' (Python Launcher for Windows),
+#   and 'python3' automatically, so Python 3.14 via 'py' will be found.
+#   If all three fail, install Python 3.10+ from https://www.python.org/downloads/
 #   During install, check "Add Python to PATH".
+#   Alternatively, open a new PowerShell window and run: py --version
 #   Then restart PowerShell and re-run Step 1.
 #
 # ── Port 8000 already in use ─────────────────────────────────────
