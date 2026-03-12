@@ -484,6 +484,7 @@ function renderZoneDetail(zoneId) {
     const hasOverride = mode !== 'normal';
     const deviceType = zone.device_type || 'Unknown';
     const supportsTemp = zone.supports_temp_adjust || false;
+    const hasManualDevices = zone.has_manual_devices || false;
     
     // Product image
     const deviceImage = deviceType === 'NTB-2R' 
@@ -511,6 +512,13 @@ function renderZoneDetail(zoneId) {
     ` : '';
 
     // Temperature controls section
+    const mixedZoneNotice = hasManualDevices ? `
+        <div class="manual-temp-notice">
+            <span class="icon">🔧</span>
+            <span>Note: Some devices in this zone (R80 RDC 700) require comfort &amp; eco temperatures to be adjusted locally on the device.</span>
+        </div>
+    ` : '';
+
     const tempSection = supportsTemp ? `
         <div class="detail-section">
             <h3>Temperatures</h3>
@@ -536,6 +544,7 @@ function renderZoneDetail(zoneId) {
                     ${zone.away_temperature != null ? zone.away_temperature.toFixed(1) : '7.0'}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
                 </div>
             </div>
+            ${mixedZoneNotice}
         </div>
     ` : `
         <div class="detail-section">
@@ -581,9 +590,13 @@ function renderZoneDetail(zoneId) {
     const componentsHtml = (zone.components || []).map((serial, idx) => {
         const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
         const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : `Device ${idx + 1}`;
+        const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
+        const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
+        const typeBadgeClass = componentType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
         return `
             <div class="component-item">
-                <span class="component-name">📟 ${roomName}</span>
+                <span class="component-name">📟 ${componentName}</span>
+                <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
                 <span class="component-serial">${displaySerial}</span>
             </div>
         `;
@@ -855,6 +868,8 @@ function renderDevicesList() {
             zone.components.forEach((serial, idx) => {
                 const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
                 const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : 'Device';
+                const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
+                const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
                 const supportsTemp = zone.supports_temp_adjust || false;
                 const mode = zone.current_mode || 'normal';
 
@@ -870,8 +885,8 @@ function renderDevicesList() {
                 devicesHtml += `
                     <div class="device-item">
                         <div class="device-info">
-                            <div class="device-serial">📟 ${roomName} — ${displaySerial}</div>
-                            <div class="device-type">${zone.device_type}</div>
+                            <div class="device-serial">📟 ${componentName} — ${displaySerial}</div>
+                            <div class="device-type">${componentType}</div>
                             <div class="device-zone">→ ${zone.name}</div>
                             <div class="device-status-row">
                                 <span class="device-mode-badge ${modeBadgeClass}">${modeLabel}</span>
@@ -939,7 +954,7 @@ function detectInlineDeviceModel(zoneId) {
     const serial = serialInput.value.replace(/\s/g, '');
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        if (prefix === '210') {
+        if (prefix === '210' || prefix === '000') {
             detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
             detectedModel.style.color = '#27ae60';
         } else if (prefix === '160') {
@@ -1039,7 +1054,7 @@ function detectDeviceModel() {
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
         
-        if (prefix === '210') {
+        if (prefix === '210' || prefix === '000') {
             detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
             detectedModel.style.color = '#27ae60';
         } else if (prefix === '160') {
@@ -1056,9 +1071,11 @@ function detectDeviceModel() {
 
 async function addDevice() {
     const serialInput = document.getElementById('deviceSerial');
+    const nameInput = document.getElementById('deviceName');
     const zoneSelect = document.getElementById('deviceZone');
     
     const serial = serialInput.value.replace(/\s/g, '');
+    const name = nameInput ? nameInput.value.trim() : '';
     const zoneId = zoneSelect.value;
     
     if (!serial || serial.length !== 12) {
@@ -1075,7 +1092,7 @@ async function addDevice() {
         const response = await fetch('/api/devices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serial, zone_id: zoneId })
+            body: JSON.stringify({ serial, zone_id: zoneId, name: name || undefined })
         });
         
         if (!response.ok) {
@@ -1085,6 +1102,7 @@ async function addDevice() {
         
         // Clear form
         serialInput.value = '';
+        if (nameInput) nameInput.value = '';
         zoneSelect.value = '';
         document.getElementById('detectedModel').textContent = '';
         

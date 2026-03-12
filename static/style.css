@@ -2124,6 +2124,16 @@ body {
     font-family: monospace;
 }
 
+.component-type-badge {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
 /* ===== Schedule Modal ===== */
 .modal {
     display: none;
