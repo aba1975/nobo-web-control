@@ -1311,7 +1311,7 @@ async def get_log(limit: int = 500):
     }
 
 
-@app.get("/api/log/clear")
+@app.post("/api/log/clear")
 async def clear_log():
     """Clear the command log buffer"""
     with log_lock:

@@ -1330,7 +1330,9 @@ function renderLogEntries() {
             : 'log-error';
         const arrow = entry.direction === 'sent' ? '→' : entry.direction === 'received' ? '←' : '✕';
         const dirLabel = entry.direction === 'sent' ? 'SENT' : entry.direction === 'received' ? 'RECV' : 'ERROR';
-        const ts = entry.timestamp ? entry.timestamp.split('T')[1] || entry.timestamp : '';
+        // Extract time portion from ISO 8601 timestamp (e.g. "2026-03-12T14:30:45.123" → "14:30:45.123")
+        const tsParts = entry.timestamp ? entry.timestamp.split('T') : [];
+        const ts = tsParts.length >= 2 ? tsParts[1] : (entry.timestamp || '');
         const rawHtml = entry.command ? `
             <details class="log-raw">
                 <summary>Raw command</summary>
@@ -1353,7 +1355,7 @@ function renderLogEntries() {
 
 async function clearLog() {
     try {
-        await fetch('/api/log/clear');
+        await fetch('/api/log/clear', { method: 'POST' });
         logEntries = [];
         renderLogEntries();
         showToast('Log cleared', 'success');
