@@ -7,6 +7,7 @@ import os
 import asyncio
 import logging
 import threading
+from collections import deque
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -135,6 +136,23 @@ hub_connected = False
 hub_thread: Optional[threading.Thread] = None
 websocket_lock = asyncio.Lock()  # Lock for thread-safe websocket list access
 connection_lock = threading.Lock()  # Lock for thread-safe hub_connected access
+log_lock = threading.Lock()  # Lock for thread-safe command log access
+
+# Command log buffer — keeps the last 500 entries
+command_log: deque = deque(maxlen=500)
+
+
+def add_log_entry(direction: str, description: str, command: str = "", source: str = "api"):
+    """Add an entry to the command log buffer (thread-safe)."""
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3],
+        "direction": direction,       # "sent" | "received" | "error"
+        "command": command,
+        "description": description,
+        "source": source,             # "api" | "hub" | "websocket"
+    }
+    with log_lock:
+        command_log.append(entry)
 
 
 # ===== Helper Functions =====
@@ -253,6 +271,11 @@ class ZoneAdd(BaseModel):
     icon: str = ""
 
 
+class ZoneUpdate(BaseModel):
+    name: Optional[str] = None
+    icon: Optional[str] = None
+
+
 # ===== Hub Connection & Callbacks =====
 def connect_to_hub_sync():
     """Connect to the Nobø Hub (synchronous, runs in thread)"""
@@ -298,6 +321,7 @@ async def connect_to_hub():
 def hub_update_callback(hub_instance):
     """Callback function triggered when hub data changes"""
     logger.info("Hub data updated - broadcasting to websocket clients")
+    add_log_entry("received", "Hub data update received", source="hub")
     
     # Schedule the broadcast in the main event loop
     try:
@@ -572,6 +596,99 @@ async def add_zone(zone: ZoneAdd):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/api/zones/{zone_id}")
+async def update_zone(zone_id: str, update: ZoneUpdate):
+    """Rename a zone and/or change its icon"""
+    with connection_lock:
+        connected = hub_connected
+
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+
+    try:
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+
+            old_name = demo_zone['name']
+            if update.name is not None:
+                demo_zone['name'] = update.name.strip()
+            if update.icon is not None:
+                demo_zone['icon'] = update.icon.strip()
+
+            add_log_entry(
+                "sent",
+                f"[DEMO] Zone '{old_name}' updated: name='{demo_zone['name']}' icon='{demo_zone['icon']}'",
+                source="api",
+            )
+            logger.info(f"Demo mode: Zone {zone_id} updated")
+            return {"status": "success", "zone_id": zone_id, "name": demo_zone['name'], "icon": demo_zone['icon']}
+
+        # Real hub mode — icon is stored locally only (pynobo doesn't support icons)
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+
+        if zone_id not in hub.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+
+        zone = hub.zones[zone_id]
+        old_name = zone.get('name', zone_id)
+
+        if update.name is not None:
+            hub.update_zone(zone_id, update.name.strip())
+            add_log_entry(
+                "sent",
+                f"update_zone({zone_id}, '{update.name.strip()}')",
+                command=f"update_zone zone_id={zone_id} name={update.name.strip()}",
+                source="api",
+            )
+
+        await asyncio.sleep(0.3)
+        return {"status": "success", "zone_id": zone_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating zone: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/zones/{zone_id}")
+async def delete_zone(zone_id: str):
+    """Delete a zone"""
+    with connection_lock:
+        connected = hub_connected
+
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+
+    try:
+        if DEMO_MODE:
+            demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
+            if not demo_zone:
+                raise HTTPException(status_code=404, detail="Zone not found")
+
+            zone_name = demo_zone['name']
+            DEMO_ZONES.remove(demo_zone)
+            add_log_entry(
+                "sent",
+                f"[DEMO] Zone '{zone_name}' (id={zone_id}) deleted",
+                source="api",
+            )
+            logger.info(f"Demo mode: Zone '{zone_name}' deleted")
+            return {"status": "success", "zone_id": zone_id}
+
+        # Real hub mode — not yet implemented
+        raise HTTPException(status_code=501, detail="Delete zone not yet implemented for real hub")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting zone: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/zones/{zone_id}/override/{mode}")
 async def set_zone_override(zone_id: str, mode: str):
     """Set override mode for a specific zone"""
@@ -581,12 +698,11 @@ async def set_zone_override(zone_id: str, mode: str):
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
-    # Validate mode
+    # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
     mode_map = {
-        'comfort': 0,
-        'eco': 1,
-        'away': 2,
-        'off': 3,
+        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1  # Special case: remove override
     }
     
@@ -601,6 +717,17 @@ async def set_zone_override(zone_id: str, mode: str):
                 raise HTTPException(status_code=404, detail="Zone not found")
             
             demo_zone['mode'] = mode
+            add_log_entry(
+                "sent",
+                f"[DEMO] Would send: create_override(now, 0, {mode.upper()}, zone_{zone_id})",
+                command=f"create_override now 0 {mode} {zone_id}",
+                source="api",
+            )
+            add_log_entry(
+                "received",
+                f"[DEMO] Zone '{demo_zone['name']}' mode set to {mode}",
+                source="api",
+            )
             return {"status": "success", "zone_id": zone_id, "mode": mode}
         
         # Real hub mode
@@ -610,9 +737,21 @@ async def set_zone_override(zone_id: str, mode: str):
         if mode == 'normal':
             # Remove override - return to schedule
             hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+            add_log_entry(
+                "sent",
+                f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
+                command=f"create_override now 0 NORMAL {zone_id}",
+                source="api",
+            )
         else:
             # Set override mode
             hub.create_override('now', 0, mode_map[mode], zone_id)
+            add_log_entry(
+                "sent",
+                f"create_override(now, 0, {mode.upper()}, zone_{zone_id})",
+                command=f"create_override now 0 {mode} {zone_id}",
+                source="api",
+            )
         
         # Wait a moment for hub to update
         await asyncio.sleep(0.5)
@@ -663,6 +802,12 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
                 if supports_eco:
                     demo_zone['eco_temp'] = temps.eco
             
+            add_log_entry(
+                "sent",
+                f"[DEMO] Would send: update_zone(zone_{zone_id}, comfort={temps.comfort}, eco={temps.eco})",
+                command=f"update_zone {zone_id} comfort={temps.comfort} eco={temps.eco}",
+                source="api",
+            )
             return {"status": "success", "zone_id": zone_id, "comfort": temps.comfort, "eco": temps.eco}
         
         # Real hub mode
@@ -740,12 +885,12 @@ async def set_global_override(mode: str):
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
-    # Validate mode - 'home' is an alias for 'normal' (cancel all overrides)
+    # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
+    # 'home' is an alias for 'normal' (cancel all overrides)
     mode_map = {
-        'comfort': 0,
-        'eco': 1,
-        'away': 2,
-        'off': 3,
+        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1,
         'home': -1  # Home mode = cancel all overrides, return to schedules
     }
@@ -759,6 +904,17 @@ async def set_global_override(mode: str):
             for demo_zone in DEMO_ZONES:
                 # For home mode, set to 'normal' which means following schedule
                 demo_zone['mode'] = 'normal' if mode == 'home' else mode
+            add_log_entry(
+                "sent",
+                f"[DEMO] Would send: create_override(now, 0, {mode.upper()}, all zones)",
+                command=f"create_override now 0 {mode} all",
+                source="api",
+            )
+            add_log_entry(
+                "received",
+                f"[DEMO] All zones set to {mode}",
+                source="api",
+            )
             return {"status": "success", "mode": mode}
         
         # Real hub mode
@@ -769,8 +925,20 @@ async def set_global_override(mode: str):
         for zone_id in hub.zones.keys():
             if mode == 'normal' or mode == 'home':
                 hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+                add_log_entry(
+                    "sent",
+                    f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
+                    command=f"create_override now 0 NORMAL {zone_id}",
+                    source="api",
+                )
             else:
                 hub.create_override('now', 0, mode_map[mode], zone_id)
+                add_log_entry(
+                    "sent",
+                    f"create_override(now, 0, {mode.upper()}, zone_{zone_id})",
+                    command=f"create_override now 0 {mode} {zone_id}",
+                    source="api",
+                )
         
         # Wait for updates
         await asyncio.sleep(0.5)
@@ -1124,6 +1292,31 @@ async def remove_device(serial: str):
     except Exception as e:
         logger.error(f"Error removing device: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== Command Log Endpoints =====
+
+@app.get("/api/log")
+async def get_log(limit: int = 500):
+    """Return the last N entries from the command log buffer"""
+    with log_lock:
+        entries = list(command_log)
+    # Return most-recent first; honour the limit
+    entries = entries[-limit:]
+    entries_reversed = list(reversed(entries))
+    return {
+        "entries": entries_reversed,
+        "total": len(entries_reversed),
+        "demo_mode": DEMO_MODE,
+    }
+
+
+@app.get("/api/log/clear")
+async def clear_log():
+    """Clear the command log buffer"""
+    with log_lock:
+        command_log.clear()
+    return {"status": "success", "message": "Log cleared"}
 
 
 # ===== WebSocket Endpoint =====

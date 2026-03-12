@@ -10,6 +10,9 @@ let globalMode = 'home';  // 'home', 'away', 'eco', or 'comfort'
 let scheduleData = {};
 let currentScheduleZone = null;
 let currentZoneDetail = null;
+let logFilter = 'all';
+let logAutoRefreshTimer = null;
+let logEntries = [];
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -78,6 +81,14 @@ function handleRouteChange() {
 }
 
 function navigateToPage(pageName) {
+    // Stop log auto-refresh when leaving log page
+    if (pageName !== 'log' && logAutoRefreshTimer) {
+        clearInterval(logAutoRefreshTimer);
+        logAutoRefreshTimer = null;
+        const cb = document.getElementById('logAutoRefresh');
+        if (cb) cb.checked = false;
+    }
+
     // Hide all pages
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
@@ -100,6 +111,8 @@ function navigateToPage(pageName) {
         // Load page-specific data
         if (pageName === 'devices') {
             loadDevicesPage();
+        } else if (pageName === 'log') {
+            loadLogPage();
         }
     }
 }
@@ -561,7 +574,6 @@ function renderZoneDetail(zoneId) {
                 <button class="override-btn ${mode === 'comfort' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'comfort')">🔥 Comfort</button>
                 <button class="override-btn ${mode === 'eco' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'eco')">🌿 Eco</button>
                 <button class="override-btn ${mode === 'away' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'away')">🏖️ Away</button>
-                <button class="override-btn ${mode === 'off' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'off')">⭘ Off</button>
             </div>
             ${hasOverride ? `<button class="cancel-override-btn" onclick="setZoneOverride('${zone.zone_id}', 'normal')">✖ Cancel Override — Return to Schedule</button>` : ''}
         </div>
@@ -629,7 +641,29 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-title">
-                <h2>${zone.icon} ${zone.name}</h2>
+                <div id="zoneNameDisplay-${zone.zone_id}" class="zone-name-display">
+                    <h2>${escapeHtml(zone.icon)} ${escapeHtml(zone.name)}</h2>
+                    <button class="btn btn-sm btn-secondary zone-edit-btn" onclick="startEditZone('${zone.zone_id}')">✏️ Edit</button>
+                </div>
+                <div id="zoneEditForm-${zone.zone_id}" class="zone-edit-form" style="display:none;">
+                    <div class="zone-edit-fields">
+                        <div class="zone-edit-icon-picker">
+                            <label>Icon:</label>
+                            <input type="text" id="zoneEditIcon-${zone.zone_id}" class="zone-edit-icon-input" value="${escapeHtml(zone.icon)}" maxlength="8" placeholder="🏠">
+                            <div class="icon-picker-options">
+                                ${['🛁','🚪','🛏️','🍳','🛋️','💻','🏠','🔥','❄️','🏖️','🌿','📡'].map(e => `<button class="icon-option" onclick="selectZoneIcon('${zone.zone_id}','${e}')">${e}</button>`).join('')}
+                            </div>
+                        </div>
+                        <div class="zone-edit-name">
+                            <label>Name:</label>
+                            <input type="text" id="zoneEditName-${zone.zone_id}" class="zone-edit-name-input" value="${escapeHtml(zone.name)}" maxlength="64" placeholder="Zone name">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="saveZoneEdit('${zone.zone_id}')">💾 Save</button>
+                        <button class="btn btn-secondary" onclick="cancelEditZone('${zone.zone_id}')">Cancel</button>
+                    </div>
+                </div>
             </div>
             
             <div class="zone-detail-current">
@@ -642,6 +676,10 @@ function renderZoneDetail(zoneId) {
             ${overrideSection}
             ${scheduleSection}
             ${roomsSection}
+
+            <div class="detail-section zone-danger-section">
+                <button class="btn btn-danger" onclick="deleteZone('${zone.zone_id}')">🗑️ Delete Zone</button>
+            </div>
         </div>
     `;
     
@@ -1158,6 +1196,172 @@ async function removeDevice(serial, zoneId) {
     }
 }
 
+// ===== Zone Edit & Delete =====
+function startEditZone(zoneId) {
+    document.getElementById(`zoneNameDisplay-${zoneId}`).style.display = 'none';
+    document.getElementById(`zoneEditForm-${zoneId}`).style.display = 'block';
+}
+
+function cancelEditZone(zoneId) {
+    document.getElementById(`zoneEditForm-${zoneId}`).style.display = 'none';
+    document.getElementById(`zoneNameDisplay-${zoneId}`).style.display = '';
+}
+
+function selectZoneIcon(zoneId, icon) {
+    const input = document.getElementById(`zoneEditIcon-${zoneId}`);
+    if (input) input.value = icon;
+}
+
+async function saveZoneEdit(zoneId) {
+    const nameInput = document.getElementById(`zoneEditName-${zoneId}`);
+    const iconInput = document.getElementById(`zoneEditIcon-${zoneId}`);
+    const name = nameInput ? nameInput.value.trim() : '';
+    const icon = iconInput ? iconInput.value.trim() : '';
+
+    if (!name) {
+        showToast('Zone name cannot be empty', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/zones/${zoneId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, icon })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update zone');
+        }
+
+        await fetchZones();
+        showToast(`Zone renamed to "${name}"`, 'success');
+        renderZoneDetail(zoneId);
+    } catch (error) {
+        console.error('Error saving zone edit:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteZone(zoneId) {
+    const zone = zones.find(z => z.zone_id === zoneId);
+    const zoneName = zone ? zone.name : 'this zone';
+
+    if (!confirm(`Are you sure you want to delete zone '${zoneName}'? This will unassign all devices in this zone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/zones/${zoneId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete zone');
+        }
+
+        await fetchZones();
+        navigateBack();
+        showToast(`Zone '${zoneName}' deleted`, 'success');
+    } catch (error) {
+        console.error('Error deleting zone:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// ===== Log Page =====
+function setLogFilter(filter) {
+    logFilter = filter;
+    document.querySelectorAll('.log-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    renderLogEntries();
+}
+
+function toggleLogAutoRefresh() {
+    const checkbox = document.getElementById('logAutoRefresh');
+    if (!checkbox) return;
+    if (checkbox.checked) {
+        logAutoRefreshTimer = setInterval(loadLogPage, 3000);
+    } else {
+        if (logAutoRefreshTimer) {
+            clearInterval(logAutoRefreshTimer);
+            logAutoRefreshTimer = null;
+        }
+    }
+}
+
+async function loadLogPage() {
+    try {
+        const response = await fetch('/api/log');
+        if (!response.ok) throw new Error('Failed to load log');
+        const data = await response.json();
+        logEntries = data.entries || [];
+        renderLogEntries();
+    } catch (error) {
+        console.error('Error loading log:', error);
+        const container = document.getElementById('logEntries');
+        if (container) container.innerHTML = '<div class="loading-message">Failed to load log</div>';
+    }
+}
+
+function renderLogEntries() {
+    const container = document.getElementById('logEntries');
+    if (!container) return;
+
+    const filtered = logEntries.filter(entry => {
+        if (logFilter === 'all') return true;
+        if (logFilter === 'sent') return entry.direction === 'sent';
+        if (logFilter === 'received') return entry.direction === 'received';
+        if (logFilter === 'error') return entry.direction === 'error';
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="loading-message">No log entries</div>';
+        return;
+    }
+
+    container.innerHTML = filtered.map(entry => {
+        const dirClass = entry.direction === 'sent' ? 'log-sent'
+            : entry.direction === 'received' ? 'log-received'
+            : 'log-error';
+        const arrow = entry.direction === 'sent' ? '→' : entry.direction === 'received' ? '←' : '✕';
+        const dirLabel = entry.direction === 'sent' ? 'SENT' : entry.direction === 'received' ? 'RECV' : 'ERROR';
+        const ts = entry.timestamp ? entry.timestamp.split('T')[1] || entry.timestamp : '';
+        const rawHtml = entry.command ? `
+            <details class="log-raw">
+                <summary>Raw command</summary>
+                <code>${escapeHtml(entry.command)}</code>
+            </details>
+        ` : '';
+        return `
+            <div class="log-entry ${dirClass}">
+                <div class="log-entry-main">
+                    <span class="log-timestamp">${escapeHtml(ts)}</span>
+                    <span class="log-arrow">${arrow}</span>
+                    <span class="log-dir">${dirLabel}</span>
+                    <span class="log-description">${escapeHtml(entry.description)}</span>
+                </div>
+                ${rawHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+async function clearLog() {
+    try {
+        await fetch('/api/log/clear');
+        logEntries = [];
+        renderLogEntries();
+        showToast('Log cleared', 'success');
+    } catch (error) {
+        showToast('Failed to clear log', 'error');
+    }
+}
+
 // ===== Toast Notifications =====
 function showToast(message, type = 'info') {
     const container = document.getElementById('toastContainer');
@@ -1268,3 +1472,12 @@ window.addDeviceToZone = addDeviceToZone;
 window.openAddZoneModal = openAddZoneModal;
 window.closeAddZoneModal = closeAddZoneModal;
 window.addZone = addZone;
+window.startEditZone = startEditZone;
+window.cancelEditZone = cancelEditZone;
+window.selectZoneIcon = selectZoneIcon;
+window.saveZoneEdit = saveZoneEdit;
+window.deleteZone = deleteZone;
+window.loadLogPage = loadLogPage;
+window.setLogFilter = setLogFilter;
+window.toggleLogAutoRefresh = toggleLogAutoRefresh;
+window.clearLog = clearLog;
