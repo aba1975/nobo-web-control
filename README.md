@@ -30,21 +30,61 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 
 ```
 nobo-web-control/
-├── server.py              # FastAPI backend using pynobo
+├── server.py                    # FastAPI backend using pynobo
 ├── static/
-│   ├── index.html         # Main webpage with 3-page navigation
-│   ├── style.css          # Styling (Mill-app inspired, card-based)
-│   ├── app.js             # Frontend logic + WebSocket for live updates
+│   ├── index.html               # Main webpage with 3-page navigation
+│   ├── style.css                # Styling (Mill-app inspired, card-based)
+│   ├── app.js                   # Frontend logic + WebSocket for live updates
 │   └── images/
-│       ├── ntb-2r.svg     # NTB-2R device image
-│       └── r80-rdc-700.svg # R80 RDC 700 device image
-├── requirements.txt       # Python dependencies
-└── README.md              # This file
+│       ├── ntb-2r.svg           # NTB-2R device image
+│       └── r80-rdc-700.svg      # R80 RDC 700 device image
+├── requirements.txt             # Python dependencies
+├── Deploy-NoboWebControl.ps1    # Windows PowerShell ISE deployment script
+└── README.md                    # This file
 ```
+
+## Windows Deployment Script (PowerShell ISE)
+
+For Windows users, a step-by-step PowerShell ISE deployment script is included:
+[`Deploy-NoboWebControl.ps1`](./Deploy-NoboWebControl.ps1)
+
+### Quick Start
+
+1. **Open** `Deploy-NoboWebControl.ps1` in **PowerShell ISE** (not the regular PowerShell console).
+2. **Select Step 0** (the configuration block at the top) and press **F8** to run it.  
+   Edit the variables to match your setup before running any other step.
+3. **Run each subsequent step** by selecting its block and pressing **F8**:
+
+| Step | What it does |
+|------|-------------|
+| Step 0 | Set configuration variables (`$InstallDir`, `$NoboSerial`, `$NoboIP`, etc.) |
+| Step 1 | Check prerequisites (Python 3.10+, pip, Git) |
+| Step 2 | Create the installation directory |
+| Step 3 | Clone the repository and check out the correct branch |
+| Step 4 | Create Python virtual environment |
+| Step 5 | Install Python dependencies |
+| Step 6 | Generate `.env` and `nobo-config.ps1` configuration files |
+| Step 7 | Verify that all files and Python modules are present |
+| Step 8 | Start the server (blocking — stops when you press Ctrl+C) |
+| Step 9 | Create a desktop shortcut (`NoboWebControl.bat`) |
+| Step 10 | Troubleshooting reference |
+
+### Important Notes
+
+- The script handles the branch name `copilot/add-new-zones-and-device-status` correctly by
+  using a two-step **clone + fetch/checkout** approach (branch names containing `/` break
+  `git clone --branch`).
+- Set `$DemoMode = $true` (the default) to test without a real Nobø Hub.
+- If you get an *execution policy* error, run the following once in an Administrator PowerShell:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+
+---
 
 ## Prerequisites
 
-- **Python 3.8 or higher**
+- **Python 3.10 or higher**
 - **pip** (Python package installer)
 - **Nobø Energy Hub** on your local network (or use demo mode)
 - Hub serial number and IP address (if connecting to real hub)
