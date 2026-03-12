@@ -2293,6 +2293,206 @@ body {
     font-size: 12px;
 }
 
+.btn-xs {
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 6px;
+}
+
+/* ===== Clickable timeline blocks ===== */
+.schedule-days .timeline-block {
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.schedule-days .timeline-block:hover {
+    filter: brightness(1.15);
+    transform: scaleY(1.06);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    z-index: 1;
+}
+
+.schedule-days .timeline-block.editing {
+    outline: 3px solid white;
+    outline-offset: -3px;
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.45);
+    transform: scaleY(1.06);
+    z-index: 2;
+}
+
+/* ===== Add-block button ===== */
+.add-block-btn {
+    align-self: flex-start;
+    opacity: 0.75;
+    transition: opacity 0.2s ease;
+}
+
+.add-block-btn:hover {
+    opacity: 1;
+}
+
+/* ===== Inline block edit/add form ===== */
+.block-edit-form {
+    background: var(--color-card-bg);
+    border: 1px solid var(--color-border);
+    border-left: 4px solid var(--color-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: var(--shadow-md);
+}
+
+.block-edit-form.editing {
+    border-left-color: var(--color-accent);
+}
+
+.block-edit-form-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.block-edit-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.time-select {
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-background);
+    color: var(--color-text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.time-select:focus {
+    border-color: var(--color-accent);
+}
+
+/* ===== Mode selector buttons ===== */
+.mode-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.mode-btn {
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    background: transparent;
+    color: var(--color-text-primary);
+}
+
+.mode-btn:hover {
+    opacity: 0.85;
+}
+
+.mode-btn.active {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+.mode-btn-comfort.active {
+    border-color: var(--color-comfort);
+    background: rgba(231,76,60,0.12);
+    color: var(--color-comfort);
+}
+
+.mode-btn-eco.active {
+    border-color: var(--color-eco);
+    background: rgba(39,174,96,0.12);
+    color: var(--color-eco);
+}
+
+.mode-btn-away.active {
+    border-color: var(--color-away);
+    background: rgba(52,152,219,0.12);
+    color: var(--color-away);
+}
+
+.block-edit-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ===== Copy day popover ===== */
+.copy-day-wrapper {
+    position: relative;
+}
+
+.copy-day-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 200;
+    background: var(--color-card-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    box-shadow: var(--shadow-lg);
+    padding: 12px 14px;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.copy-quick-select {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.copy-day-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.copy-day-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+}
+
+.copy-day-check input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--color-primary);
+}
+
+.copy-day-footer {
+    display: flex;
+    gap: 6px;
+    border-top: 1px solid var(--color-border);
+    padding-top: 8px;
+}
+
 /* ===== Nav for new routing ===== */
 .nav {
     display: flex;
