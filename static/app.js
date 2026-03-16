@@ -1069,7 +1069,7 @@ function submitAddTimeBlock(day) {
         const bStart = timeToMinutes(block.start);
         const bEnd = timeToMinutes(block.end);
         if (startMin < bEnd && endMin > bStart) {
-            showToast(`Overlaps with ${block.mode} block (${block.start}-${block.end}). Edit or delete it first.`, 'error');
+            showToast(`Overlaps with ${block.mode} block (${block.start}–${block.end}). Edit or delete it first.`, 'error');
             return;
         }
     }
