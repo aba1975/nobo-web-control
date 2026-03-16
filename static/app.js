@@ -10,6 +10,14 @@ let globalMode = 'home';  // 'home', 'away', 'eco', or 'comfort'
 let scheduleData = {};
 let currentScheduleZone = null;
 let currentZoneDetail = null;
+let logFilter = 'all';
+let logAutoRefreshTimer = null;
+let logEntries = [];
+let activeFormState = null;   // { type: 'add'|'edit', day: string, blockIndex: number|null }
+let copyDayPopoverDay = null; // which day's copy popover is currently open
+
+const SCHEDULE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const SCHEDULE_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -78,6 +86,14 @@ function handleRouteChange() {
 }
 
 function navigateToPage(pageName) {
+    // Stop log auto-refresh when leaving log page
+    if (pageName !== 'log' && logAutoRefreshTimer) {
+        clearInterval(logAutoRefreshTimer);
+        logAutoRefreshTimer = null;
+        const cb = document.getElementById('logAutoRefresh');
+        if (cb) cb.checked = false;
+    }
+
     // Hide all pages
     document.querySelectorAll('.page').forEach(page => {
         page.classList.remove('active');
@@ -100,6 +116,8 @@ function navigateToPage(pageName) {
         // Load page-specific data
         if (pageName === 'devices') {
             loadDevicesPage();
+        } else if (pageName === 'log') {
+            loadLogPage();
         }
     }
 }
@@ -484,6 +502,7 @@ function renderZoneDetail(zoneId) {
     const hasOverride = mode !== 'normal';
     const deviceType = zone.device_type || 'Unknown';
     const supportsTemp = zone.supports_temp_adjust || false;
+    const hasManualDevices = zone.has_manual_devices || false;
     
     // Product image
     const deviceImage = deviceType === 'NTB-2R' 
@@ -511,6 +530,13 @@ function renderZoneDetail(zoneId) {
     ` : '';
 
     // Temperature controls section
+    const mixedZoneNotice = hasManualDevices ? `
+        <div class="manual-temp-notice">
+            <span class="icon">🔧</span>
+            <span>Note: Some devices in this zone (R80 RDC 700) require comfort &amp; eco temperatures to be adjusted locally on the device.</span>
+        </div>
+    ` : '';
+
     const tempSection = supportsTemp ? `
         <div class="detail-section">
             <h3>Temperatures</h3>
@@ -536,6 +562,7 @@ function renderZoneDetail(zoneId) {
                     ${zone.away_temperature != null ? zone.away_temperature.toFixed(1) : '7.0'}°C 🔒 <span class="temp-lock-text">(set by Nobø)</span>
                 </div>
             </div>
+            ${mixedZoneNotice}
         </div>
     ` : `
         <div class="detail-section">
@@ -561,7 +588,6 @@ function renderZoneDetail(zoneId) {
                 <button class="override-btn ${mode === 'comfort' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'comfort')">🔥 Comfort</button>
                 <button class="override-btn ${mode === 'eco' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'eco')">🌿 Eco</button>
                 <button class="override-btn ${mode === 'away' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'away')">🏖️ Away</button>
-                <button class="override-btn ${mode === 'off' ? 'active' : ''}" onclick="setZoneOverride('${zone.zone_id}', 'off')">⭘ Off</button>
             </div>
             ${hasOverride ? `<button class="cancel-override-btn" onclick="setZoneOverride('${zone.zone_id}', 'normal')">✖ Cancel Override — Return to Schedule</button>` : ''}
         </div>
@@ -581,9 +607,13 @@ function renderZoneDetail(zoneId) {
     const componentsHtml = (zone.components || []).map((serial, idx) => {
         const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
         const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : `Device ${idx + 1}`;
+        const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
+        const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
+        const typeBadgeClass = componentType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
         return `
             <div class="component-item">
-                <span class="component-name">📟 ${roomName}</span>
+                <span class="component-name">📟 ${componentName}</span>
+                <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
                 <span class="component-serial">${displaySerial}</span>
             </div>
         `;
@@ -629,7 +659,29 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-title">
-                <h2>${zone.icon} ${zone.name}</h2>
+                <div id="zoneNameDisplay-${zone.zone_id}" class="zone-name-display">
+                    <h2>${escapeHtml(zone.icon)} ${escapeHtml(zone.name)}</h2>
+                    <button class="btn btn-sm btn-secondary zone-edit-btn" onclick="startEditZone('${zone.zone_id}')">✏️ Edit</button>
+                </div>
+                <div id="zoneEditForm-${zone.zone_id}" class="zone-edit-form" style="display:none;">
+                    <div class="zone-edit-fields">
+                        <div class="zone-edit-icon-picker">
+                            <label>Icon:</label>
+                            <input type="text" id="zoneEditIcon-${zone.zone_id}" class="zone-edit-icon-input" value="${escapeHtml(zone.icon)}" maxlength="8" placeholder="🏠">
+                            <div class="icon-picker-options">
+                                ${['🛁','🚪','🛏️','🍳','🛋️','💻','🏠','🔥','❄️','🏖️','🌿','📡'].map(e => `<button class="icon-option" onclick="selectZoneIcon('${zone.zone_id}','${e}')">${e}</button>`).join('')}
+                            </div>
+                        </div>
+                        <div class="zone-edit-name">
+                            <label>Name:</label>
+                            <input type="text" id="zoneEditName-${zone.zone_id}" class="zone-edit-name-input" value="${escapeHtml(zone.name)}" maxlength="64" placeholder="Zone name">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="saveZoneEdit('${zone.zone_id}')">💾 Save</button>
+                        <button class="btn btn-secondary" onclick="cancelEditZone('${zone.zone_id}')">Cancel</button>
+                    </div>
+                </div>
             </div>
             
             <div class="zone-detail-current">
@@ -642,6 +694,10 @@ function renderZoneDetail(zoneId) {
             ${overrideSection}
             ${scheduleSection}
             ${roomsSection}
+
+            <div class="detail-section zone-danger-section">
+                <button class="btn btn-danger" onclick="deleteZone('${zone.zone_id}')">🗑️ Delete Zone</button>
+            </div>
         </div>
     `;
     
@@ -741,11 +797,158 @@ async function loadScheduleFromAPI() {
     }
 }
 
+// ===== Schedule Helpers =====
+
+function timeToMinutes(timeStr) {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours * 60 + minutes;
+}
+
+function minutesToTime(minutes) {
+    if (minutes >= 24 * 60) return '24:00';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function generateTimeOptions() {
+    const options = [];
+    for (let h = 0; h < 24; h++) {
+        options.push(`${String(h).padStart(2, '0')}:00`);
+        options.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    options.push('24:00');
+    return options;
+}
+
+function fillGaps(day) {
+    let blocks = (scheduleData[day] || []).slice();
+    blocks.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+
+    const endOfDay = 24 * 60;
+    const filled = [];
+    let cursor = 0;
+
+    for (const block of blocks) {
+        const start = timeToMinutes(block.start);
+        const end = timeToMinutes(block.end);
+        if (start > cursor) {
+            filled.push({ start: minutesToTime(cursor), end: minutesToTime(start), mode: 'eco' });
+        }
+        if (end > cursor) {
+            // Use Math.max defensively in case blocks were entered with overlapping times
+            filled.push({ start: minutesToTime(Math.max(start, cursor)), end: minutesToTime(end), mode: block.mode });
+            cursor = end;
+        }
+    }
+    if (cursor < endOfDay) {
+        filled.push({ start: minutesToTime(cursor), end: '24:00', mode: 'eco' });
+    }
+
+    // Merge adjacent blocks with the same mode
+    const merged = [];
+    for (const block of filled) {
+        if (merged.length > 0 &&
+            merged[merged.length - 1].mode === block.mode &&
+            merged[merged.length - 1].end === block.start) {
+            merged[merged.length - 1] = { ...merged[merged.length - 1], end: block.end };
+        } else {
+            merged.push({ ...block });
+        }
+    }
+    scheduleData[day] = merged;
+}
+
+function generateTimeSelectHtml(id, selectedValue, excludeFirst, excludeLast) {
+    const times = generateTimeOptions().filter(t =>
+        !(excludeFirst && t === '00:00') && !(excludeLast && t === '24:00')
+    );
+    return `<select id="${id}" class="time-select">${
+        times.map(t => `<option value="${t}"${t === selectedValue ? ' selected' : ''}>${t}</option>`).join('')
+    }</select>`;
+}
+
+function getModeButtonsHtml(containerId, selectedMode) {
+    return ['comfort', 'eco', 'away'].map(mode => {
+        const icon = mode === 'comfort' ? '🔥' : mode === 'eco' ? '🌿' : '🏖️';
+        const label = mode.charAt(0).toUpperCase() + mode.slice(1);
+        return `<button type="button" class="mode-btn mode-btn-${mode}${selectedMode === mode ? ' active' : ''}"
+            data-mode="${mode}" onclick="selectMode('${containerId}','${mode}')">${icon} ${label}</button>`;
+    }).join('');
+}
+
+function buildAddFormHtml(day) {
+    const startSelect = generateTimeSelectHtml(`formStart-${day}`, '00:00', false, true);
+    const endSelect = generateTimeSelectHtml(`formEnd-${day}`, '24:00', true, false);
+    const modeId = `formMode-${day}`;
+    return `<div class="block-edit-form">
+        <div class="block-edit-form-title">➕ Add Time Block</div>
+        <div class="block-edit-fields">
+            <label class="field-label">Start ${startSelect}</label>
+            <label class="field-label">End ${endSelect}</label>
+            <div class="field-label">Mode
+                <div class="mode-selector" id="${modeId}" data-selected="comfort">
+                    ${getModeButtonsHtml(modeId, 'comfort')}
+                </div>
+            </div>
+        </div>
+        <div class="block-edit-actions">
+            <button class="btn btn-primary btn-sm" onclick="submitAddTimeBlock('${day}')">Add</button>
+            <button class="btn btn-secondary btn-sm" onclick="closeAllForms()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function buildEditFormHtml(day, blockIndex, block, totalBlocks) {
+    const startSelect = generateTimeSelectHtml(`editStart-${day}-${blockIndex}`, block.start, false, true);
+    const endSelect = generateTimeSelectHtml(`editEnd-${day}-${blockIndex}`, block.end, true, false);
+    const modeId = `editMode-${day}-${blockIndex}`;
+    const canDelete = totalBlocks > 1;
+    return `<div class="block-edit-form editing">
+        <div class="block-edit-form-title">✏️ Edit Time Block</div>
+        <div class="block-edit-fields">
+            <label class="field-label">Start ${startSelect}</label>
+            <label class="field-label">End ${endSelect}</label>
+            <div class="field-label">Mode
+                <div class="mode-selector" id="${modeId}" data-selected="${block.mode}">
+                    ${getModeButtonsHtml(modeId, block.mode)}
+                </div>
+            </div>
+        </div>
+        <div class="block-edit-actions">
+            <button class="btn btn-primary btn-sm" onclick="submitEditTimeBlock('${day}',${blockIndex})">Save</button>
+            ${canDelete ? `<button class="btn btn-danger btn-sm" onclick="deleteTimeBlock('${day}',${blockIndex})">🗑 Delete</button>` : ''}
+            <button class="btn btn-secondary btn-sm" onclick="closeAllForms()">Cancel</button>
+        </div>
+    </div>`;
+}
+
+function buildCopyDayPopoverHtml(sourceDay, days, dayNames) {
+    const checkboxes = days
+        .filter(d => d !== sourceDay)
+        .map(d => {
+            const name = dayNames[days.indexOf(d)];
+            return `<label class="copy-day-check"><input type="checkbox" class="copy-to-check" value="${d}"> ${name}</label>`;
+        }).join('');
+    return `<div class="copy-day-popover" onclick="event.stopPropagation()">
+        <div class="copy-quick-select">
+            <button class="btn btn-xs" onclick="selectCopyDayGroup('weekdays','${sourceDay}')">Mon–Fri</button>
+            <button class="btn btn-xs" onclick="selectCopyDayGroup('weekend','${sourceDay}')">Sat–Sun</button>
+            <button class="btn btn-xs" onclick="selectCopyDayGroup('all','${sourceDay}')">All Days</button>
+        </div>
+        <div class="copy-day-checks">${checkboxes}</div>
+        <div class="copy-day-footer">
+            <button class="btn btn-primary btn-sm" onclick="confirmCopyDay('${sourceDay}')">Copy</button>
+            <button class="btn btn-secondary btn-sm" onclick="closeCopyDayPopover()">Cancel</button>
+        </div>
+    </div>`;
+}
+
 function renderSchedule() {
     const scheduleDays = document.getElementById('scheduleDays');
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
+    const days = SCHEDULE_DAYS;
+    const dayNames = SCHEDULE_DAY_NAMES;
+
     // Default schedule if no data loaded
     if (!scheduleData || Object.keys(scheduleData).length === 0) {
         scheduleData = {};
@@ -757,51 +960,228 @@ function renderSchedule() {
             ];
         });
     }
-    
+
     scheduleDays.innerHTML = days.map((day, index) => {
         const blocks = scheduleData[day] || [];
-        const blockHtml = blocks.map(block => {
-            const startMinutes = timeToMinutes(block.start);
-            const endMinutes = timeToMinutes(block.end);
-            const duration = endMinutes - startMinutes;
+
+        const blockHtml = blocks.map((block, bi) => {
+            const duration = timeToMinutes(block.end) - timeToMinutes(block.start);
             const widthPercent = (duration / (24 * 60)) * 100;
-            
-            const modeIcon = block.mode === 'comfort' ? '🔥' : block.mode === 'eco' ? '🌿' : block.mode === 'away' ? '🏖️' : '⭘';
+            const modeIcon = block.mode === 'comfort' ? '🔥' : block.mode === 'eco' ? '🌿' : '🏖️';
             const modeClass = `timeline-block-${block.mode}`;
-            
-            return `<div class="timeline-block ${modeClass}" style="width: ${widthPercent}%">
+            const isEditing = activeFormState && activeFormState.type === 'edit' &&
+                activeFormState.day === day && activeFormState.blockIndex === bi;
+            const modeLabel = block.mode.charAt(0).toUpperCase() + block.mode.slice(1);
+            return `<div class="timeline-block ${modeClass}${isEditing ? ' editing' : ''}"
+                style="width:${widthPercent.toFixed(2)}%"
+                onclick="openEditTimeBlock('${day}',${bi})"
+                title="${modeLabel}: ${block.start}–${block.end}">
                 <span class="timeline-icon">${modeIcon}</span>
-                <span class="timeline-label">${block.mode.charAt(0).toUpperCase() + block.mode.slice(1)}</span>
-                <span class="timeline-time">${block.start} — ${block.end}</span>
+                <span class="timeline-label">${modeLabel}</span>
+                <span class="timeline-time">${block.start}–${block.end}</span>
             </div>`;
         }).join('');
-        
-        return `
-            <div class="schedule-day">
-                <div class="schedule-day-header">
-                    <div class="day-name">${dayNames[index]}</div>
+
+        let formHtml = '';
+        if (activeFormState && activeFormState.day === day) {
+            if (activeFormState.type === 'add') {
+                formHtml = buildAddFormHtml(day);
+            } else if (activeFormState.type === 'edit' && blocks[activeFormState.blockIndex]) {
+                formHtml = buildEditFormHtml(day, activeFormState.blockIndex, blocks[activeFormState.blockIndex], blocks.length);
+            }
+        }
+
+        const copyPopoverHtml = copyDayPopoverDay === day
+            ? buildCopyDayPopoverHtml(day, days, dayNames)
+            : '';
+
+        const showAddBtn = !(activeFormState && activeFormState.type === 'add' && activeFormState.day === day);
+
+        return `<div class="schedule-day" data-day="${day}">
+            <div class="schedule-day-header">
+                <div class="day-name">${dayNames[index]}</div>
+                <div class="copy-day-wrapper">
                     <button class="btn btn-sm" onclick="copyDay('${day}')">Copy to ▼</button>
+                    ${copyPopoverHtml}
                 </div>
-                <div class="day-timeline">
-                    ${blockHtml || '<div class="timeline-block timeline-block-eco" style="width: 100%">No schedule</div>'}
-                </div>
-                <button class="btn btn-sm" onclick="addTimeBlock('${day}')">+ Add Time Block</button>
             </div>
-        `;
+            <div class="day-timeline">
+                ${blockHtml || '<div class="timeline-block timeline-block-eco" style="width:100%">No schedule</div>'}
+            </div>
+            ${formHtml}
+            ${showAddBtn ? `<button class="btn btn-sm add-block-btn" onclick="addTimeBlock('${day}')">+ Add Block</button>` : ''}
+        </div>`;
     }).join('');
 }
 
-function timeToMinutes(timeStr) {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    return hours * 60 + minutes;
-}
+// ===== Schedule Block Editing =====
 
 function addTimeBlock(day) {
-    showToast('Schedule editing coming soon', 'info');
+    closeCopyDayPopover();
+    activeFormState = { type: 'add', day };
+    renderSchedule();
+    const dayEl = document.querySelector(`.schedule-day[data-day="${day}"]`);
+    if (dayEl) dayEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+function openEditTimeBlock(day, blockIndex) {
+    closeCopyDayPopover();
+    activeFormState = { type: 'edit', day, blockIndex };
+    renderSchedule();
+    const dayEl = document.querySelector(`.schedule-day[data-day="${day}"]`);
+    if (dayEl) dayEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeAllForms() {
+    activeFormState = null;
+    closeCopyDayPopover();
+    renderSchedule();
+}
+
+function selectMode(containerId, mode) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.setAttribute('data-selected', mode);
+    container.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+}
+
+function submitAddTimeBlock(day) {
+    const startEl = document.getElementById(`formStart-${day}`);
+    const endEl = document.getElementById(`formEnd-${day}`);
+    const modeEl = document.getElementById(`formMode-${day}`);
+    if (!startEl || !endEl || !modeEl) return;
+
+    const start = startEl.value;
+    const end = endEl.value;
+    const mode = modeEl.getAttribute('data-selected') || 'comfort';
+
+    if (timeToMinutes(start) >= timeToMinutes(end)) {
+        showToast('Start time must be before end time', 'error');
+        return;
+    }
+
+    const blocks = scheduleData[day] || [];
+    const startMin = timeToMinutes(start);
+    const endMin = timeToMinutes(end);
+    for (const block of blocks) {
+        const bStart = timeToMinutes(block.start);
+        const bEnd = timeToMinutes(block.end);
+        if (startMin < bEnd && endMin > bStart) {
+            showToast(`Overlaps with ${block.mode} block (${block.start}–${block.end}). Edit or delete it first.`, 'error');
+            return;
+        }
+    }
+
+    if (!scheduleData[day]) scheduleData[day] = [];
+    scheduleData[day].push({ start, end, mode });
+    scheduleData[day].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+    fillGaps(day);
+    activeFormState = null;
+    renderSchedule();
+    showToast(`Added ${mode} block ${start}–${end}`, 'success');
+}
+
+function submitEditTimeBlock(day, blockIndex) {
+    const startEl = document.getElementById(`editStart-${day}-${blockIndex}`);
+    const endEl = document.getElementById(`editEnd-${day}-${blockIndex}`);
+    const modeEl = document.getElementById(`editMode-${day}-${blockIndex}`);
+    if (!startEl || !endEl || !modeEl) return;
+
+    const start = startEl.value;
+    const end = endEl.value;
+    const mode = modeEl.getAttribute('data-selected') || 'eco';
+
+    if (timeToMinutes(start) >= timeToMinutes(end)) {
+        showToast('Start time must be before end time', 'error');
+        return;
+    }
+
+    const blocks = scheduleData[day] || [];
+    const startMin = timeToMinutes(start);
+    const endMin = timeToMinutes(end);
+    for (let i = 0; i < blocks.length; i++) {
+        if (i === blockIndex) continue;
+        const bStart = timeToMinutes(blocks[i].start);
+        const bEnd = timeToMinutes(blocks[i].end);
+        if (startMin < bEnd && endMin > bStart) {
+            showToast(`Overlaps with ${blocks[i].mode} block (${blocks[i].start}–${blocks[i].end}).`, 'error');
+            return;
+        }
+    }
+
+    scheduleData[day][blockIndex] = { start, end, mode };
+    scheduleData[day].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+    fillGaps(day);
+    activeFormState = null;
+    renderSchedule();
+    showToast(`Updated block to ${mode} ${start}–${end}`, 'success');
+}
+
+function deleteTimeBlock(day, blockIndex) {
+    const blocks = scheduleData[day] || [];
+    if (blocks.length <= 1) {
+        showToast('Cannot delete the only block. Change its mode instead.', 'warning');
+        return;
+    }
+    const removed = blocks[blockIndex];
+    scheduleData[day].splice(blockIndex, 1);
+    fillGaps(day);
+    activeFormState = null;
+    renderSchedule();
+    showToast(`Deleted ${removed.mode} block (${removed.start}–${removed.end})`, 'info');
+}
+
+// ===== Copy Day =====
+
 function copyDay(day) {
-    showToast('Copy day functionality coming soon', 'info');
+    activeFormState = null;
+    if (copyDayPopoverDay === day) {
+        copyDayPopoverDay = null;
+    } else {
+        copyDayPopoverDay = day;
+    }
+    renderSchedule();
+}
+
+function closeCopyDayPopover() {
+    if (copyDayPopoverDay !== null) {
+        copyDayPopoverDay = null;
+    }
+}
+
+function selectCopyDayGroup(group, sourceDay) {
+    const popover = document.querySelector('.copy-day-popover');
+    if (!popover) return;
+    const weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+    const weekend = ['saturday', 'sunday'];
+    const allDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    let targetDays;
+    if (group === 'weekdays') targetDays = weekdays.filter(d => d !== sourceDay);
+    else if (group === 'weekend') targetDays = weekend.filter(d => d !== sourceDay);
+    else targetDays = allDays.filter(d => d !== sourceDay);
+    popover.querySelectorAll('.copy-to-check').forEach(cb => {
+        cb.checked = targetDays.includes(cb.value);
+    });
+}
+
+function confirmCopyDay(sourceDay) {
+    const popover = document.querySelector('.copy-day-popover');
+    if (!popover) return;
+    const selected = Array.from(popover.querySelectorAll('.copy-to-check:checked')).map(cb => cb.value);
+    if (selected.length === 0) {
+        showToast('Select at least one day to copy to', 'warning');
+        return;
+    }
+    const sourceBlocks = (scheduleData[sourceDay] || []).map(b => ({ ...b }));
+    selected.forEach(targetDay => {
+        scheduleData[targetDay] = sourceBlocks.map(b => ({ ...b }));
+    });
+    copyDayPopoverDay = null;
+    renderSchedule();
+    const names = selected.map(d => SCHEDULE_DAY_NAMES[SCHEDULE_DAYS.indexOf(d)]);
+    showToast(`Copied schedule to: ${names.join(', ')}`, 'success');
 }
 
 async function saveSchedule() {
@@ -855,6 +1235,8 @@ function renderDevicesList() {
             zone.components.forEach((serial, idx) => {
                 const displaySerial = zone.components_display ? zone.components_display[idx] : serial;
                 const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : 'Device';
+                const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
+                const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
                 const supportsTemp = zone.supports_temp_adjust || false;
                 const mode = zone.current_mode || 'normal';
 
@@ -870,8 +1252,8 @@ function renderDevicesList() {
                 devicesHtml += `
                     <div class="device-item">
                         <div class="device-info">
-                            <div class="device-serial">📟 ${roomName} — ${displaySerial}</div>
-                            <div class="device-type">${zone.device_type}</div>
+                            <div class="device-serial">📟 ${componentName} — ${displaySerial}</div>
+                            <div class="device-type">${componentType}</div>
                             <div class="device-zone">→ ${zone.name}</div>
                             <div class="device-status-row">
                                 <span class="device-mode-badge ${modeBadgeClass}">${modeLabel}</span>
@@ -939,7 +1321,7 @@ function detectInlineDeviceModel(zoneId) {
     const serial = serialInput.value.replace(/\s/g, '');
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        if (prefix === '210') {
+        if (prefix === '210' || prefix === '000') {
             detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
             detectedModel.style.color = '#27ae60';
         } else if (prefix === '160') {
@@ -1039,7 +1421,7 @@ function detectDeviceModel() {
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
         
-        if (prefix === '210') {
+        if (prefix === '210' || prefix === '000') {
             detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
             detectedModel.style.color = '#27ae60';
         } else if (prefix === '160') {
@@ -1056,9 +1438,11 @@ function detectDeviceModel() {
 
 async function addDevice() {
     const serialInput = document.getElementById('deviceSerial');
+    const nameInput = document.getElementById('deviceName');
     const zoneSelect = document.getElementById('deviceZone');
     
     const serial = serialInput.value.replace(/\s/g, '');
+    const name = nameInput ? nameInput.value.trim() : '';
     const zoneId = zoneSelect.value;
     
     if (!serial || serial.length !== 12) {
@@ -1075,7 +1459,7 @@ async function addDevice() {
         const response = await fetch('/api/devices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serial, zone_id: zoneId })
+            body: JSON.stringify({ serial, zone_id: zoneId, name: name || undefined })
         });
         
         if (!response.ok) {
@@ -1085,6 +1469,7 @@ async function addDevice() {
         
         // Clear form
         serialInput.value = '';
+        if (nameInput) nameInput.value = '';
         zoneSelect.value = '';
         document.getElementById('detectedModel').textContent = '';
         
@@ -1155,6 +1540,173 @@ async function removeDevice(serial, zoneId) {
     } catch (error) {
         console.error('Error removing device:', error);
         showToast(error.message, 'error');
+    }
+}
+
+// ===== Zone Edit & Delete =====
+function startEditZone(zoneId) {
+    document.getElementById(`zoneNameDisplay-${zoneId}`).style.display = 'none';
+    document.getElementById(`zoneEditForm-${zoneId}`).style.display = 'block';
+}
+
+function cancelEditZone(zoneId) {
+    document.getElementById(`zoneEditForm-${zoneId}`).style.display = 'none';
+    document.getElementById(`zoneNameDisplay-${zoneId}`).style.display = '';
+}
+
+function selectZoneIcon(zoneId, icon) {
+    const input = document.getElementById(`zoneEditIcon-${zoneId}`);
+    if (input) input.value = icon;
+}
+
+async function saveZoneEdit(zoneId) {
+    const nameInput = document.getElementById(`zoneEditName-${zoneId}`);
+    const iconInput = document.getElementById(`zoneEditIcon-${zoneId}`);
+    const name = nameInput ? nameInput.value.trim() : '';
+    const icon = iconInput ? iconInput.value.trim() : '';
+
+    if (!name) {
+        showToast('Zone name cannot be empty', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/zones/${zoneId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, icon })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update zone');
+        }
+
+        await fetchZones();
+        showToast(`Zone renamed to "${name}"`, 'success');
+        renderZoneDetail(zoneId);
+    } catch (error) {
+        console.error('Error saving zone edit:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+async function deleteZone(zoneId) {
+    const zone = zones.find(z => z.zone_id === zoneId);
+    const zoneName = zone ? zone.name : 'this zone';
+
+    if (!confirm(`Are you sure you want to delete zone '${zoneName}'? This will unassign all devices in this zone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/zones/${zoneId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete zone');
+        }
+
+        await fetchZones();
+        navigateBack();
+        showToast(`Zone '${zoneName}' deleted`, 'success');
+    } catch (error) {
+        console.error('Error deleting zone:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// ===== Log Page =====
+function setLogFilter(filter) {
+    logFilter = filter;
+    document.querySelectorAll('.log-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    renderLogEntries();
+}
+
+function toggleLogAutoRefresh() {
+    const checkbox = document.getElementById('logAutoRefresh');
+    if (!checkbox) return;
+    if (checkbox.checked) {
+        logAutoRefreshTimer = setInterval(loadLogPage, 3000);
+    } else {
+        if (logAutoRefreshTimer) {
+            clearInterval(logAutoRefreshTimer);
+            logAutoRefreshTimer = null;
+        }
+    }
+}
+
+async function loadLogPage() {
+    try {
+        const response = await fetch('/api/log');
+        if (!response.ok) throw new Error('Failed to load log');
+        const data = await response.json();
+        logEntries = data.entries || [];
+        renderLogEntries();
+    } catch (error) {
+        console.error('Error loading log:', error);
+        const container = document.getElementById('logEntries');
+        if (container) container.innerHTML = '<div class="loading-message">Failed to load log</div>';
+    }
+}
+
+function renderLogEntries() {
+    const container = document.getElementById('logEntries');
+    if (!container) return;
+
+    const filtered = logEntries.filter(entry => {
+        if (logFilter === 'all') return true;
+        if (logFilter === 'sent') return entry.direction === 'sent';
+        if (logFilter === 'received') return entry.direction === 'received';
+        if (logFilter === 'error') return entry.direction === 'error';
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="loading-message">No log entries</div>';
+        return;
+    }
+
+    container.innerHTML = filtered.map(entry => {
+        const dirClass = entry.direction === 'sent' ? 'log-sent'
+            : entry.direction === 'received' ? 'log-received'
+            : 'log-error';
+        const arrow = entry.direction === 'sent' ? '→' : entry.direction === 'received' ? '←' : '✕';
+        const dirLabel = entry.direction === 'sent' ? 'SENT' : entry.direction === 'received' ? 'RECV' : 'ERROR';
+        const tsParts = entry.timestamp ? entry.timestamp.split('T') : [];
+        const ts = tsParts.length >= 2 ? tsParts[1] : (entry.timestamp || '');
+        const rawHtml = entry.command ? `
+            <details class="log-raw">
+                <summary>Raw command</summary>
+                <code>${escapeHtml(entry.command)}</code>
+            </details>
+        ` : '';
+        return `
+            <div class="log-entry ${dirClass}">
+                <div class="log-entry-main">
+                    <span class="log-timestamp">${escapeHtml(ts)}</span>
+                    <span class="log-arrow">${arrow}</span>
+                    <span class="log-dir">${dirLabel}</span>
+                    <span class="log-description">${escapeHtml(entry.description)}</span>
+                </div>
+                ${rawHtml}
+            </div>
+        `;
+    }).join('');
+}
+
+async function clearLog() {
+    try {
+        await fetch('/api/log/clear', { method: 'POST' });
+        logEntries = [];
+        renderLogEntries();
+        showToast('Log cleared', 'success');
+    } catch (error) {
+        showToast('Failed to clear log', 'error');
     }
 }
 
@@ -1242,6 +1794,11 @@ document.addEventListener('click', (event) => {
     if (target) {
         addRipple({ currentTarget: target, clientX: event.clientX, clientY: event.clientY });
     }
+    // Close copy-day popover when clicking outside it
+    if (copyDayPopoverDay !== null && !event.target.closest('.copy-day-wrapper')) {
+        copyDayPopoverDay = null;
+        renderSchedule();
+    }
 });
 
 // ===== Export functions to global scope =====
@@ -1253,7 +1810,16 @@ window.navigateBack = navigateBack;
 window.openScheduleModal = openScheduleModal;
 window.closeScheduleModal = closeScheduleModal;
 window.addTimeBlock = addTimeBlock;
+window.openEditTimeBlock = openEditTimeBlock;
+window.closeAllForms = closeAllForms;
+window.selectMode = selectMode;
+window.submitAddTimeBlock = submitAddTimeBlock;
+window.submitEditTimeBlock = submitEditTimeBlock;
+window.deleteTimeBlock = deleteTimeBlock;
 window.copyDay = copyDay;
+window.closeCopyDayPopover = closeCopyDayPopover;
+window.selectCopyDayGroup = selectCopyDayGroup;
+window.confirmCopyDay = confirmCopyDay;
 window.saveSchedule = saveSchedule;
 window.formatSerialInput = formatSerialInput;
 window.detectDeviceModel = detectDeviceModel;
@@ -1268,3 +1834,12 @@ window.addDeviceToZone = addDeviceToZone;
 window.openAddZoneModal = openAddZoneModal;
 window.closeAddZoneModal = closeAddZoneModal;
 window.addZone = addZone;
+window.startEditZone = startEditZone;
+window.cancelEditZone = cancelEditZone;
+window.selectZoneIcon = selectZoneIcon;
+window.saveZoneEdit = saveZoneEdit;
+window.deleteZone = deleteZone;
+window.loadLogPage = loadLogPage;
+window.setLogFilter = setLogFilter;
+window.toggleLogAutoRefresh = toggleLogAutoRefresh;
+window.clearLog = clearLog;
