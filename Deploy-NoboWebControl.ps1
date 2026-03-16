@@ -27,7 +27,7 @@ $DemoMode       = $true                                          # $true = demo 
 $Branch         = "copilot/consolidate-feature-work-from-pr-7-8-9"
 $RepoUrl        = "https://github.com/aba1975/nobo-web-control.git"
 # Fallback commit SHA — use when git checkout $Branch fails (e.g. old Git clients)
-$FallbackSHA    = "45392df6aa1f3e71f8a315c2c2d591b91418aa78"
+$FallbackSHA    = "047ec3394fc66a2c6507f391983b2fc64b50372c"
 
 Write-Host "Configuration loaded." -ForegroundColor Cyan
 Write-Host "  Install dir : $InstallDir"
