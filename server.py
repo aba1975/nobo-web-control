@@ -200,7 +200,7 @@ def detect_device_type(serial: str) -> tuple[str, bool, bool]:
         model = pynobo.nobo.MODELS[model_prefix]
         return (model.name, model.supports_comfort, model.supports_eco)
     
-    # Fallback: 000 prefix is treated as NTB-2R
+    # Fallback: some devices use 000 prefix (legacy firmware or manufacturing variant) and are NTB-2R compatible
     if model_prefix == '000':
         return ("NTB-2R", True, True)
     
