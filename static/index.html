@@ -23,6 +23,10 @@
                     <span class="nav-icon" aria-hidden="true">⚙️</span>
                     <span class="nav-label">Devices</span>
                 </a>
+                <a href="#log" class="nav-link" data-page="log">
+                    <span class="nav-icon" aria-hidden="true">📋</span>
+                    <span class="nav-label">Log</span>
+                </a>
             </nav>
             
             <div class="header-right">
@@ -117,6 +121,10 @@
                             <span id="detectedModel" class="detected-model"></span>
                         </div>
                         <div class="form-group">
+                            <label for="deviceName">Device Name:</label>
+                            <input type="text" id="deviceName" placeholder="e.g. Living Room Heater" maxlength="64">
+                        </div>
+                        <div class="form-group">
                             <label for="deviceZone">Assign to Zone:</label>
                             <select id="deviceZone">
                                 <option value="">Select zone...</option>
@@ -133,6 +141,32 @@
                         <div id="devicesList">
                             <div class="loading-message">Loading devices...</div>
                         </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Log Page -->
+            <div id="logPage" class="page">
+                <section class="log-section">
+                    <h2>📋 API Command Log</h2>
+                    <div class="log-controls">
+                        <div class="log-filter-group">
+                            <button class="log-filter-btn active" data-filter="all" onclick="setLogFilter('all')">All</button>
+                            <button class="log-filter-btn" data-filter="sent" onclick="setLogFilter('sent')">Sent →</button>
+                            <button class="log-filter-btn" data-filter="received" onclick="setLogFilter('received')">← Received</button>
+                            <button class="log-filter-btn" data-filter="error" onclick="setLogFilter('error')">Errors</button>
+                        </div>
+                        <div class="log-action-group">
+                            <label class="log-autorefresh-label">
+                                <input type="checkbox" id="logAutoRefresh" onchange="toggleLogAutoRefresh()">
+                                Auto-refresh (3s)
+                            </label>
+                            <button class="btn btn-sm btn-danger" onclick="clearLog()">🗑️ Clear Log</button>
+                            <button class="btn btn-sm btn-secondary" onclick="loadLogPage()">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div id="logEntries" class="log-entries">
+                        <div class="loading-message">Loading log...</div>
                     </div>
                 </section>
             </div>
