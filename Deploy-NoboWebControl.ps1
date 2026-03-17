@@ -27,7 +27,7 @@ $DemoMode       = $true                                          # $true = demo 
 $Branch         = "copilot/consolidate-feature-work-from-pr-7-8-9"
 $RepoUrl        = "https://github.com/aba1975/nobo-web-control.git"
 # Fallback commit SHA — use when git checkout $Branch fails (e.g. old Git clients)
-$FallbackSHA    = "047ec3394fc66a2c6507f391983b2fc64b50372c"
+$FallbackSHA    = "2f456b48222f2d659b52b1c2c05e39fe30b5599b"
 
 Write-Host "Configuration loaded." -ForegroundColor Cyan
 Write-Host "  Install dir : $InstallDir"
@@ -141,7 +141,8 @@ try {
         Write-Host "  [INFO] Git repo already exists in $InstallDir. Skipping initial clone." -ForegroundColor Yellow
     } else {
         Write-Host "  Cloning $RepoUrl into $InstallDir ..." -ForegroundColor Cyan
-        & git clone $RepoUrl $InstallDir
+        $gitOutput = & git clone $RepoUrl $InstallDir 2>&1
+        $gitOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
         if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)" }
         Write-Host "  [OK] Clone complete." -ForegroundColor Green
     }
@@ -150,11 +151,13 @@ try {
     Set-Location $InstallDir
 
     Write-Host "  Fetching branch: $Branch ..." -ForegroundColor Cyan
-    & git fetch origin $Branch
+    $gitOutput = & git fetch origin $Branch 2>&1
+    $gitOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)" }
 
     Write-Host "  Checking out: $Branch ..." -ForegroundColor Cyan
-    & git checkout $Branch
+    $gitOutput = & git checkout $Branch 2>&1
+    $gitOutput | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
     if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)" }
 
     Write-Host "  [OK] Branch '$Branch' checked out." -ForegroundColor Green
