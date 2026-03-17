@@ -27,7 +27,7 @@ $DemoMode       = $true                                          # $true = demo 
 $Branch         = "copilot/consolidate-feature-work-from-pr-7-8-9"
 $RepoUrl        = "https://github.com/aba1975/nobo-web-control.git"
 # Fallback commit SHA — use when git checkout $Branch fails (e.g. old Git clients)
-$FallbackSHA    = "047ec3394fc66a2c6507f391983b2fc64b50372c"
+$FallbackSHA    = "dd41aa7efc8ef9bccceeaf47d95321f0abd8bdee"
 
 Write-Host "Configuration loaded." -ForegroundColor Cyan
 Write-Host "  Install dir : $InstallDir"
@@ -141,8 +141,9 @@ try {
         Write-Host "  [INFO] Git repo already exists in $InstallDir. Skipping initial clone." -ForegroundColor Yellow
     } else {
         Write-Host "  Cloning $RepoUrl into $InstallDir ..." -ForegroundColor Cyan
-        & git clone $RepoUrl $InstallDir
-        if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)" }
+        $cloneOutput = & git clone $RepoUrl $InstallDir 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)`n$cloneOutput" }
+        Write-Host $cloneOutput -ForegroundColor DarkGray
         Write-Host "  [OK] Clone complete." -ForegroundColor Green
     }
 
@@ -150,12 +151,14 @@ try {
     Set-Location $InstallDir
 
     Write-Host "  Fetching branch: $Branch ..." -ForegroundColor Cyan
-    & git fetch origin $Branch
-    if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)" }
+    $fetchOutput = & git fetch origin $Branch 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)`n$fetchOutput" }
+    Write-Host $fetchOutput -ForegroundColor DarkGray
 
     Write-Host "  Checking out: $Branch ..." -ForegroundColor Cyan
-    & git checkout $Branch
-    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)" }
+    $checkoutOutput = & git checkout $Branch 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)`n$checkoutOutput" }
+    Write-Host $checkoutOutput -ForegroundColor DarkGray
 
     Write-Host "  [OK] Branch '$Branch' checked out." -ForegroundColor Green
 
@@ -320,7 +323,18 @@ $requiredFiles = @(
     "static\app.js",
     "static\style.css",
     "static\images\ntb-2r.svg",
-    "static\images\r80-rdc-700.svg"
+    "static\images\r80-rdc-700.svg",
+    "static\images\placeholder.svg",
+    "static\images\r80-rsc-700.svg",
+    "static\images\r80-rxc-700.svg",
+    "static\images\r80-txf-700.svg",
+    "static\images\ncu-1r.svg",
+    "static\images\ncu-2r.svg",
+    "static\images\ncu-er.svg",
+    "static\images\dcu-er.svg",
+    "static\images\2nc9-700.svg",
+    "static\images\tr36.svg",
+    "static\images\trb-36-700.svg"
 )
 
 $allFilesOk = $true

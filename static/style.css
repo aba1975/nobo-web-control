@@ -3163,3 +3163,107 @@ select:focus-visible {
     border-radius: 8px;
     display: inline-block;
 }
+
+/* ===== Device category badge classes ===== */
+.device-badge-floor {
+    background-color: #2980b9;
+    color: white;
+}
+
+.device-badge-heater-full {
+    background-color: #2980b9;
+    color: white;
+}
+
+.device-badge-heater-eco {
+    background-color: #16a085;
+    color: white;
+}
+
+.device-badge-heater-manual {
+    background-color: #7f8c8d;
+    color: white;
+}
+
+.device-badge-room {
+    background-color: #27ae60;
+    color: white;
+}
+
+.device-badge-switch {
+    background-color: #f39c12;
+    color: white;
+}
+
+.device-badge-control {
+    background-color: #8e44ad;
+    color: white;
+}
+
+/* ===== Device thumbnail image (Devices page) ===== */
+.device-image-thumb {
+    width: 48px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.device-thumb-img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+/* ===== Inline device name edit (Zone Detail) ===== */
+.component-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.component-item:last-child {
+    border-bottom: none;
+}
+
+.component-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.btn-icon:hover {
+    opacity: 1;
+    background: var(--color-border);
+}
+
+.component-edit-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.component-name-input {
+    flex: 1;
+    min-width: 150px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: var(--text-sm);
+    background: var(--color-card-bg);
+    color: var(--color-text-primary);
+}
