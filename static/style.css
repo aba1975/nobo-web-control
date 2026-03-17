@@ -1852,6 +1852,84 @@ body {
     letter-spacing: 0.5px;
 }
 
+/* ===== Device Category Badge Colors ===== */
+.device-badge-floor {
+    background-color: #4a90d9; /* blue - floor thermostats */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-heater-full {
+    background-color: #2196F3; /* blue - panel heaters with full comfort+eco */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-heater-eco {
+    background-color: #00897B; /* teal - panel heaters with eco only */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-heater-manual {
+    background-color: #9E9E9E; /* grey - panel heaters with no remote temp */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-room {
+    background-color: #4CAF50; /* green - room thermostats */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-switch {
+    background-color: #FFC107; /* yellow - switches and outlet switches */
+    color: #333;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.device-badge-control {
+    background-color: #9C27B0; /* purple - control panels */
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 .zone-detail-title {
     text-align: center;
     margin-bottom: 15px;

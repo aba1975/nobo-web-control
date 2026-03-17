@@ -19,6 +19,84 @@ let copyDayPopoverDay = null; // which day's copy popover is currently open
 const SCHEDULE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const SCHEDULE_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+// ===== Device Models (aligned with pynobo MODELS dictionary) =====
+const DEVICE_MODELS = {
+    '120': { name: 'RS 700',               type: 'SWITCH',            image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '121': { name: 'RSX 700',              type: 'SWITCH',            image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '130': { name: 'RCE 700',              type: 'SWITCH_OUTLET',     image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '160': { name: 'R80 RDC 700',          type: 'THERMOSTAT_HEATER', image: 'r80-rdc-700.svg',   supportsComfort: false, supportsEco: false },
+    '165': { name: 'R80 RDC 700 LST (GB)', type: 'THERMOSTAT_HEATER', image: 'r80-rdc-700.svg',   supportsComfort: false, supportsEco: false },
+    '168': { name: 'NCU-2R',               type: 'THERMOSTAT_HEATER', image: 'ncu-2r.svg',        supportsComfort: true,  supportsEco: true  },
+    '169': { name: 'DCU-2R',               type: 'THERMOSTAT_HEATER', image: 'placeholder.svg',   supportsComfort: true,  supportsEco: true  },
+    '170': { name: 'Serie 18, ewt touch',  type: 'THERMOSTAT_HEATER', image: 'placeholder.svg',   supportsComfort: true,  supportsEco: true  },
+    '180': { name: '2NC9 700',             type: 'THERMOSTAT_HEATER', image: '2nc9-700.svg',      supportsComfort: false, supportsEco: true  },
+    '182': { name: 'R80 RSC 700 (5-24)',   type: 'THERMOSTAT_HEATER', image: 'r80-rsc-700.svg',   supportsComfort: false, supportsEco: true  },
+    '183': { name: 'R80 RSC 700 (5-30)',   type: 'THERMOSTAT_HEATER', image: 'r80-rsc-700.svg',   supportsComfort: false, supportsEco: true  },
+    '184': { name: 'NCU-1R',               type: 'THERMOSTAT_HEATER', image: 'ncu-1r.svg',        supportsComfort: false, supportsEco: true  },
+    '186': { name: 'DCU-1R',               type: 'THERMOSTAT_HEATER', image: 'placeholder.svg',   supportsComfort: false, supportsEco: true  },
+    '190': { name: 'Safir',                type: 'THERMOSTAT_HEATER', image: 'placeholder.svg',   supportsComfort: true,  supportsEco: true  },
+    '192': { name: 'R80 TXF 700',          type: 'THERMOSTAT_HEATER', image: 'r80-txf-700.svg',   supportsComfort: true,  supportsEco: true  },
+    '194': { name: 'R80 RXC 700',          type: 'THERMOSTAT_HEATER', image: 'r80-rxc-700.svg',   supportsComfort: true,  supportsEco: true  },
+    '198': { name: 'NCU-ER',               type: 'THERMOSTAT_HEATER', image: 'ncu-er.svg',        supportsComfort: true,  supportsEco: true  },
+    '199': { name: 'DCU-ER',               type: 'THERMOSTAT_HEATER', image: 'dcu-er.svg',        supportsComfort: true,  supportsEco: true  },
+    '200': { name: 'TRB 36 700',           type: 'THERMOSTAT_FLOOR',  image: 'trb-36-700.svg',    supportsComfort: false, supportsEco: false },
+    '210': { name: 'NTB-2R',               type: 'THERMOSTAT_FLOOR',  image: 'ntb-2r.svg',        supportsComfort: true,  supportsEco: true  },
+    '220': { name: 'TR36',                 type: 'THERMOSTAT_FLOOR',  image: 'tr36.svg',          supportsComfort: false, supportsEco: true  },
+    '230': { name: 'TCU 700',              type: 'THERMOSTAT_ROOM',   image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '231': { name: 'THB 700',              type: 'THERMOSTAT_ROOM',   image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '232': { name: 'TXB 700',              type: 'THERMOSTAT_ROOM',   image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '234': { name: 'SW4',                  type: 'CONTROL_PANEL',     image: 'placeholder.svg',   supportsComfort: false, supportsEco: false },
+    '000': { name: 'NTB-2R',               type: 'THERMOSTAT_FLOOR',  image: 'ntb-2r.svg',        supportsComfort: true,  supportsEco: true  },
+};
+
+/**
+ * Get the image path for a device model prefix.
+ * Tries PNG first (via onerror fallback on <img> tags), stores SVG as base name.
+ */
+function getDeviceImageSrc(modelPrefix) {
+    const model = DEVICE_MODELS[modelPrefix];
+    if (!model) return 'images/placeholder.svg';
+    // Store base name with .svg; onerror on <img> elements falls back from .png to .svg
+    return `images/${model.image}`;
+}
+
+/**
+ * Build an <img> tag that tries the PNG version first and falls back to SVG.
+ * Usage: document.body.innerHTML += deviceImageTag('210', 'NTB-2R', 'my-css-class');
+ */
+function deviceImageTag(modelPrefix, altText, cssClass) {
+    const model = DEVICE_MODELS[modelPrefix];
+    const svgSrc = model ? `images/${model.image}` : 'images/placeholder.svg';
+    // Derive PNG name from the SVG name (replace .svg → .png)
+    const pngSrc = svgSrc.replace(/\.svg$/, '.png');
+    const classAttr = cssClass ? ` class="${cssClass}"` : '';
+    return `<img src="${pngSrc}" onerror="this.onerror=null;this.src='${svgSrc}';" alt="${altText}"${classAttr}>`;
+}
+
+/**
+ * Return the CSS badge class for a device type category.
+ */
+function getDeviceBadgeClass(deviceType, supportsComfort, supportsEco) {
+    switch (deviceType) {
+        case 'THERMOSTAT_FLOOR':
+            return 'device-badge-floor';
+        case 'THERMOSTAT_HEATER':
+            if (supportsComfort && supportsEco) return 'device-badge-heater-full';
+            if (supportsEco) return 'device-badge-heater-eco';
+            return 'device-badge-heater-manual';
+        case 'THERMOSTAT_ROOM':
+            return 'device-badge-room';
+        case 'SWITCH':
+        case 'SWITCH_OUTLET':
+            return 'device-badge-switch';
+        case 'CONTROL_PANEL':
+            return 'device-badge-control';
+        default:
+            return 'device-badge-grey';
+    }
+}
+
+
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Nobø Control - Initializing...');
@@ -501,16 +579,21 @@ function renderZoneDetail(zoneId) {
     const mode = zone.current_mode || 'normal';
     const hasOverride = mode !== 'normal';
     const deviceType = zone.device_type || 'Unknown';
+    const deviceCategory = zone.device_category || 'UNKNOWN';
     const supportsTemp = zone.supports_temp_adjust || false;
     const hasManualDevices = zone.has_manual_devices || false;
-    
-    // Product image
-    const deviceImage = deviceType === 'NTB-2R' 
-        ? '/static/images/ntb-2r.svg' 
-        : '/static/images/r80-rdc-700.svg';
-    
-    // Device badge
-    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
+
+    // Product image — use first component serial prefix for model lookup
+    const firstSerial = (zone.components && zone.components.length > 0) ? zone.components[0] : '';
+    const firstPrefix = firstSerial.replace(/\s/g, '').slice(0, 3);
+    const deviceImgHtml = deviceImageTag(firstPrefix, deviceType, '');
+
+    // Device badge — color by category
+    const deviceBadgeClass = getDeviceBadgeClass(
+        deviceCategory,
+        zone.supports_comfort || false,
+        zone.supports_eco || false
+    );
     
     // Status
     const statusIcon = hasOverride ? '⚡' : '📅';
@@ -609,7 +692,10 @@ function renderZoneDetail(zoneId) {
         const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : `Device ${idx + 1}`;
         const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
         const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
-        const typeBadgeClass = componentType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
+        const componentCategory = zone.components_categories && zone.components_categories[idx] ? zone.components_categories[idx] : deviceCategory;
+        const compPrefix = serial.replace(/\s/g, '').slice(0, 3);
+        const compModel = DEVICE_MODELS[compPrefix] || {};
+        const typeBadgeClass = getDeviceBadgeClass(componentCategory, compModel.supportsComfort || false, compModel.supportsEco || false);
         return `
             <div class="component-item">
                 <span class="component-name">📟 ${componentName}</span>
@@ -654,7 +740,7 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-image">
-                <img src="${deviceImage}" alt="${deviceType}">
+                ${deviceImgHtml}
                 <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
             </div>
             
@@ -1321,11 +1407,9 @@ function detectInlineDeviceModel(zoneId) {
     const serial = serialInput.value.replace(/\s/g, '');
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';
@@ -1420,12 +1504,9 @@ function detectDeviceModel() {
     
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';

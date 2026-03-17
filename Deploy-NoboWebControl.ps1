@@ -319,8 +319,19 @@ $requiredFiles = @(
     "static\index.html",
     "static\app.js",
     "static\style.css",
+    "static\images\placeholder.svg",
     "static\images\ntb-2r.svg",
-    "static\images\r80-rdc-700.svg"
+    "static\images\r80-rdc-700.svg",
+    "static\images\r80-rsc-700.svg",
+    "static\images\r80-rxc-700.svg",
+    "static\images\r80-txf-700.svg",
+    "static\images\ncu-1r.svg",
+    "static\images\ncu-2r.svg",
+    "static\images\ncu-er.svg",
+    "static\images\dcu-er.svg",
+    "static\images\2nc9-700.svg",
+    "static\images\tr36.svg",
+    "static\images\trb-36-700.svg"
 )
 
 $allFilesOk = $true
