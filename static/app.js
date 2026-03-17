@@ -69,8 +69,9 @@ function deviceImageTag(modelPrefix, altText, cssClass) {
     const svgSrc = model ? `images/${model.image}` : 'images/placeholder.svg';
     // Derive PNG name from the SVG name (replace .svg → .png)
     const pngSrc = svgSrc.replace(/\.svg$/, '.png');
-    const classAttr = cssClass ? ` class="${cssClass}"` : '';
-    return `<img src="${pngSrc}" onerror="this.onerror=null;this.src='${svgSrc}';" alt="${altText}"${classAttr}>`;
+    const classAttr = cssClass ? ` class="${escapeHtml(cssClass)}"` : '';
+    const safeAlt = escapeHtml(altText || '');
+    return `<img src="${pngSrc}" onerror="this.onerror=null;this.src='${svgSrc}';" alt="${safeAlt}"${classAttr}>`;
 }
 
 /**
