@@ -19,6 +19,76 @@ let copyDayPopoverDay = null; // which day's copy popover is currently open
 const SCHEDULE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const SCHEDULE_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+// ===== Device Model Catalog =====
+// Maps 3-digit serial prefix to device info
+const DEVICE_MODELS = {
+    '120': { name: 'RS 700',              type: 'switch',            image: 'placeholder.svg', supportsComfort: false, supportsEco: false },
+    '121': { name: 'RSX 700',             type: 'switch',            image: 'placeholder.svg', supportsComfort: false, supportsEco: false },
+    '130': { name: 'RCE 700',             type: 'switch_outlet',     image: 'placeholder.svg', supportsComfort: false, supportsEco: false },
+    '160': { name: 'R80 RDC 700',         type: 'thermostat_heater', image: 'r80-rdc-700.png',  supportsComfort: false, supportsEco: false },
+    '165': { name: 'R80 RDC 700 LST',     type: 'thermostat_heater', image: 'r80-rdc-700.png',  supportsComfort: false, supportsEco: false },
+    '168': { name: 'NCU-2R',              type: 'thermostat_heater', image: 'ncu-2r.png',        supportsComfort: true,  supportsEco: true  },
+    '169': { name: 'DCU-2R',              type: 'thermostat_heater', image: 'placeholder.svg',  supportsComfort: true,  supportsEco: true  },
+    '170': { name: 'Serie 18, ewt touch', type: 'thermostat_heater', image: 'placeholder.svg',  supportsComfort: true,  supportsEco: true  },
+    '180': { name: '2NC9 700',            type: 'thermostat_heater', image: '2nc9-700.png',      supportsComfort: false, supportsEco: true  },
+    '182': { name: 'R80 RSC 700 (5-24)',  type: 'thermostat_heater', image: 'r80-rsc-700.png',  supportsComfort: false, supportsEco: true  },
+    '183': { name: 'R80 RSC 700 (5-30)',  type: 'thermostat_heater', image: 'r80-rsc-700.png',  supportsComfort: false, supportsEco: true  },
+    '184': { name: 'NCU-1R',              type: 'thermostat_heater', image: 'ncu-1r.png',        supportsComfort: false, supportsEco: true  },
+    '186': { name: 'DCU-1R',              type: 'thermostat_heater', image: 'placeholder.svg',  supportsComfort: false, supportsEco: true  },
+    '190': { name: 'Safir',               type: 'thermostat_heater', image: 'placeholder.svg',  supportsComfort: true,  supportsEco: true  },
+    '192': { name: 'R80 TXF 700',         type: 'thermostat_heater', image: 'r80-txf-700.png',  supportsComfort: true,  supportsEco: true  },
+    '194': { name: 'R80 RXC 700',         type: 'thermostat_heater', image: 'r80-rxc-700.png',  supportsComfort: true,  supportsEco: true  },
+    '198': { name: 'NCU-ER',              type: 'thermostat_heater', image: 'ncu-er.png',        supportsComfort: true,  supportsEco: true  },
+    '199': { name: 'DCU-ER',              type: 'thermostat_heater', image: 'dcu-er.png',        supportsComfort: true,  supportsEco: true  },
+    '200': { name: 'TRB 36 700',          type: 'thermostat_floor',  image: 'trb-36-700.png',   supportsComfort: false, supportsEco: false },
+    '210': { name: 'NTB-2R',              type: 'thermostat_floor',  image: 'ntb-2r.png',        supportsComfort: true,  supportsEco: true  },
+    '220': { name: 'TR36',                type: 'thermostat_floor',  image: 'tr36.png',          supportsComfort: false, supportsEco: true  },
+    '230': { name: 'TCU 700',             type: 'thermostat_room',   image: 'placeholder.svg',  supportsComfort: false, supportsEco: false },
+    '231': { name: 'THB 700',             type: 'thermostat_room',   image: 'placeholder.svg',  supportsComfort: false, supportsEco: false },
+    '232': { name: 'TXB 700',             type: 'thermostat_room',   image: 'placeholder.svg',  supportsComfort: false, supportsEco: false },
+    '234': { name: 'SW4',                 type: 'control_panel',     image: 'placeholder.svg',  supportsComfort: false, supportsEco: false },
+    '000': { name: 'NTB-2R',              type: 'thermostat_floor',  image: 'ntb-2r.png',        supportsComfort: true,  supportsEco: true  },
+};
+
+/**
+ * Returns an <img> tag for the device identified by serial prefix.
+ * PNGs are tried first with an onerror fallback to SVG placeholder.
+ */
+function deviceImageTag(serial, altText, cssClass) {
+    const prefix = String(serial).replace(/\s/g, '').slice(0, 3);
+    const model = DEVICE_MODELS[prefix] || DEVICE_MODELS['000'];
+    const safeAlt = escapeHtml(altText || model.name);
+    const classAttr = cssClass ? ` class="${escapeHtml(cssClass)}"` : '';
+    const img = model.image;
+    if (img.endsWith('.png')) {
+        return `<img src="images/${img}" alt="${safeAlt}"${classAttr} onerror="this.onerror=null;this.src='images/placeholder.svg'">`;
+    }
+    return `<img src="images/${img}" alt="${safeAlt}"${classAttr}>`;
+}
+
+/**
+ * Maps device category + capabilities to a CSS badge class.
+ */
+function getDeviceBadgeClass(deviceCategory, supportsComfort, supportsEco) {
+    switch (deviceCategory) {
+        case 'thermostat_floor':
+            return 'device-badge-floor';
+        case 'thermostat_heater':
+            if (supportsComfort && supportsEco) return 'device-badge-heater-full';
+            if (supportsEco) return 'device-badge-heater-eco';
+            return 'device-badge-heater-manual';
+        case 'thermostat_room':
+            return 'device-badge-room';
+        case 'switch':
+        case 'switch_outlet':
+            return 'device-badge-switch';
+        case 'control_panel':
+            return 'device-badge-control';
+        default:
+            return 'device-badge-heater-manual';
+    }
+}
+
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Nobø Control - Initializing...');
@@ -504,13 +574,12 @@ function renderZoneDetail(zoneId) {
     const supportsTemp = zone.supports_temp_adjust || false;
     const hasManualDevices = zone.has_manual_devices || false;
     
-    // Product image
-    const deviceImage = deviceType === 'NTB-2R' 
-        ? '/static/images/ntb-2r.svg' 
-        : '/static/images/r80-rdc-700.svg';
+    // Product image using deviceImageTag helper
+    const deviceImage = deviceImageTag(zone.components && zone.components[0] ? zone.components[0] : '000', deviceType, null);
     
-    // Device badge
-    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
+    // Device badge using getDeviceBadgeClass helper
+    const deviceCategory = zone.device_category || 'unknown';
+    const deviceBadgeClass = getDeviceBadgeClass(deviceCategory, zone.supports_comfort || false, zone.supports_eco || false);
     
     // Status
     const statusIcon = hasOverride ? '⚡' : '📅';
@@ -609,12 +678,33 @@ function renderZoneDetail(zoneId) {
         const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : `Device ${idx + 1}`;
         const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
         const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
-        const typeBadgeClass = componentType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
+        const compCategory = zone.components_categories && zone.components_categories[idx] ? zone.components_categories[idx] : (zone.device_category || 'unknown');
+        const prefix = String(serial).replace(/\s/g, '').slice(0, 3);
+        const compModel = DEVICE_MODELS[prefix] || DEVICE_MODELS['000'];
+        const typeBadgeClass = getDeviceBadgeClass(compCategory, compModel.supportsComfort, compModel.supportsEco);
+        // Use data-* attributes to avoid injection issues with device names in onclick handlers
         return `
-            <div class="component-item">
-                <span class="component-name">📟 ${componentName}</span>
-                <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
-                <span class="component-serial">${displaySerial}</span>
+            <div class="component-item" id="component-item-${escapeHtml(serial)}">
+                <div class="component-main">
+                    <span class="component-name">📟 <span id="componentNameDisplay-${escapeHtml(serial)}">${escapeHtml(componentName)}</span></span>
+                    <button class="btn-icon" title="Edit name"
+                        data-serial="${escapeHtml(serial)}"
+                        data-name="${escapeHtml(componentName)}"
+                        onclick="startEditDeviceName(this.dataset.serial, this.dataset.name)">✏️</button>
+                    <span class="component-type-badge ${typeBadgeClass}">${escapeHtml(componentType)}</span>
+                    <span class="component-serial">${escapeHtml(displaySerial)}</span>
+                </div>
+                <div class="component-edit-form" id="componentEditForm-${escapeHtml(serial)}" style="display:none;">
+                    <input type="text" id="componentNameInput-${escapeHtml(serial)}" class="component-name-input"
+                           value="${escapeHtml(componentName)}" maxlength="64" placeholder="Device name">
+                    <button class="btn btn-primary btn-sm"
+                        data-serial="${escapeHtml(serial)}"
+                        data-zone="${escapeHtml(zone.zone_id)}"
+                        onclick="saveDeviceName(this.dataset.serial, this.dataset.zone)">💾 Save</button>
+                    <button class="btn btn-secondary btn-sm"
+                        data-serial="${escapeHtml(serial)}"
+                        onclick="cancelEditDeviceName(this.dataset.serial)">Cancel</button>
+                </div>
             </div>
         `;
     }).join('');
@@ -654,8 +744,8 @@ function renderZoneDetail(zoneId) {
             </div>
             
             <div class="zone-detail-image">
-                <img src="${deviceImage}" alt="${deviceType}">
-                <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
+                ${deviceImage}
+                <div class="device-badge ${deviceBadgeClass}">${escapeHtml(deviceType)}</div>
             </div>
             
             <div class="zone-detail-title">
@@ -1237,8 +1327,14 @@ function renderDevicesList() {
                 const roomName = zone.rooms && zone.rooms[idx] ? zone.rooms[idx] : 'Device';
                 const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
                 const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
+                const compCategory = zone.components_categories && zone.components_categories[idx] ? zone.components_categories[idx] : (zone.device_category || 'unknown');
                 const supportsTemp = zone.supports_temp_adjust || false;
                 const mode = zone.current_mode || 'normal';
+                const prefix = String(serial).replace(/\s/g, '').slice(0, 3);
+                const compModel = DEVICE_MODELS[prefix] || DEVICE_MODELS['000'];
+
+                // Device type badge
+                const typeBadgeClass = getDeviceBadgeClass(compCategory, compModel.supportsComfort, compModel.supportsEco);
 
                 // Mode badge
                 const modeBadgeClass = mode === 'comfort' ? 'mode-badge-comfort'
@@ -1251,10 +1347,13 @@ function renderDevicesList() {
 
                 devicesHtml += `
                     <div class="device-item">
+                        <div class="device-image-thumb">
+                            ${deviceImageTag(serial, componentType, 'device-thumb-img')}
+                        </div>
                         <div class="device-info">
-                            <div class="device-serial">📟 ${componentName} — ${displaySerial}</div>
-                            <div class="device-type">${componentType}</div>
-                            <div class="device-zone">→ ${zone.name}</div>
+                            <div class="device-serial">📟 ${escapeHtml(componentName)} — ${escapeHtml(displaySerial)}</div>
+                            <div class="device-type"><span class="component-type-badge ${typeBadgeClass}">${escapeHtml(componentType)}</span></div>
+                            <div class="device-zone">→ ${escapeHtml(zone.name)}</div>
                             <div class="device-status-row">
                                 <span class="device-mode-badge ${modeBadgeClass}">${modeLabel}</span>
                                 <span class="device-temp-support">${tempLabel}</span>
@@ -1321,11 +1420,9 @@ function detectInlineDeviceModel(zoneId) {
     const serial = serialInput.value.replace(/\s/g, '');
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';
@@ -1420,12 +1517,9 @@ function detectDeviceModel() {
     
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';
@@ -1547,6 +1641,49 @@ async function removeDevice(serial, zoneId) {
 function startEditZone(zoneId) {
     document.getElementById(`zoneNameDisplay-${zoneId}`).style.display = 'none';
     document.getElementById(`zoneEditForm-${zoneId}`).style.display = 'block';
+}
+
+// ===== Device Name Edit =====
+function startEditDeviceName(serial, currentName) {
+    const mainEl = document.querySelector(`#component-item-${serial} .component-main`);
+    const formEl = document.getElementById(`componentEditForm-${serial}`);
+    const inputEl = document.getElementById(`componentNameInput-${serial}`);
+    if (mainEl) mainEl.style.display = 'none';
+    if (formEl) formEl.style.display = 'flex';
+    if (inputEl) { inputEl.value = currentName; inputEl.focus(); }
+}
+
+function cancelEditDeviceName(serial) {
+    const mainEl = document.querySelector(`#component-item-${serial} .component-main`);
+    const formEl = document.getElementById(`componentEditForm-${serial}`);
+    if (mainEl) mainEl.style.display = '';
+    if (formEl) formEl.style.display = 'none';
+}
+
+async function saveDeviceName(serial, zoneId) {
+    const inputEl = document.getElementById(`componentNameInput-${serial}`);
+    if (!inputEl) return;
+    const name = inputEl.value.trim();
+
+    try {
+        const response = await fetch(`/api/devices/${serial}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to rename device');
+        }
+
+        await fetchZones();
+        renderZoneDetail(zoneId);
+        showToast('Device renamed successfully', 'success');
+    } catch (error) {
+        console.error('Error renaming device:', error);
+        showToast(error.message, 'error');
+    }
 }
 
 function cancelEditZone(zoneId) {
@@ -1839,6 +1976,9 @@ window.cancelEditZone = cancelEditZone;
 window.selectZoneIcon = selectZoneIcon;
 window.saveZoneEdit = saveZoneEdit;
 window.deleteZone = deleteZone;
+window.startEditDeviceName = startEditDeviceName;
+window.cancelEditDeviceName = cancelEditDeviceName;
+window.saveDeviceName = saveDeviceName;
 window.loadLogPage = loadLogPage;
 window.setLogFilter = setLogFilter;
 window.toggleLogAutoRefresh = toggleLogAutoRefresh;

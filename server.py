@@ -82,9 +82,9 @@ DEMO_ZONES = [
         "name": "Upstairs Bedrooms",
         "icon": "🛏️",
         "rooms": ["North", "South"],
-        "components": ["160004028112", "160004028113"],  # R80 RDC 700 devices
+        "components": ["160004028112", "168004028113"],  # R80 RDC 700 + NCU-2R
         "component_names": ["North Room Heater", "South Room Heater"],
-        "current_temp": None,  # R80 has no built-in temperature sensor
+        "current_temp": 21.3,  # NCU-2R provides temperature reading
         "comfort_temp": 21.0,
         "eco_temp": 18.0,
         "mode": "eco",
@@ -95,9 +95,9 @@ DEMO_ZONES = [
         "name": "Living Area",
         "icon": "🍳🛋️",
         "rooms": ["Kitchen", "Living Room"],
-        "components": ["160004028114", "160004028115"],  # R80 RDC 700 devices
+        "components": ["184004028114", "184004028115"],  # NCU-1R devices
         "component_names": ["Kitchen Heater", "Living Room Heater"],
-        "current_temp": None,  # R80 has no built-in temperature sensor
+        "current_temp": None,  # NCU-1R: eco only, no comfort temp sensor
         "comfort_temp": 21.0,
         "eco_temp": 19.0,
         "mode": "normal",
@@ -108,9 +108,9 @@ DEMO_ZONES = [
         "name": "Tech Room",
         "icon": "💻",
         "rooms": ["Tech Room"],
-        "components": ["160004028116"],  # R80 RDC 700 device
+        "components": ["182004028116"],  # R80 RSC 700
         "component_names": ["Tech Room Heater"],
-        "current_temp": None,  # R80 has no built-in temperature sensor
+        "current_temp": None,  # R80 RSC 700 has no built-in temperature sensor
         "comfort_temp": 21.5,
         "eco_temp": 19.0,
         "mode": "comfort",
@@ -121,9 +121,9 @@ DEMO_ZONES = [
         "name": "Downstairs Bedrooms",
         "icon": "🛏️",
         "rooms": ["Master", "North", "South"],
-        "components": ["160004028117", "160004028118", "160004028119"],  # R80 RDC 700 devices
+        "components": ["160004028117", "192004028118", "160004028119"],  # R80 RDC 700 + R80 TXF 700 + R80 RDC 700
         "component_names": ["Master Heater", "North Heater", "South Heater"],
-        "current_temp": None,  # R80 has no built-in temperature sensor
+        "current_temp": 19.8,  # R80 TXF 700 provides temperature reading
         "comfort_temp": 20.5,
         "eco_temp": 18.0,
         "mode": "eco",
@@ -176,7 +176,7 @@ def add_log_entry(direction: str, description: str, command: str = "", source: s
 
 
 # ===== Helper Functions =====
-def detect_device_type(serial: str) -> tuple[str, bool, bool]:
+def detect_device_type(serial: str) -> tuple[str, bool, bool, str, bool, bool]:
     """
     Detect device type from serial number prefix using pynobo MODELS.
     
@@ -184,28 +184,35 @@ def detect_device_type(serial: str) -> tuple[str, bool, bool]:
         serial: 12-digit serial number (with or without spaces)
     
     Returns:
-        tuple: (device_name, supports_comfort, supports_eco)
+        tuple: (device_name, supports_comfort, supports_eco, model_type, has_temp_sensor, requires_control_panel)
     """
     # Remove spaces and ensure it's a string
     serial_clean = str(serial).replace(' ', '').strip()
     
     # Get first 3 digits (model prefix)
     if len(serial_clean) < 3:
-        return ("Unknown", False, False)
+        return ("Unknown", False, False, "unknown", False, False)
     
     model_prefix = serial_clean[:3]
     
     # Look up in pynobo MODELS
     if model_prefix in pynobo.nobo.MODELS:
         model = pynobo.nobo.MODELS[model_prefix]
-        return (model.name, model.supports_comfort, model.supports_eco)
+        return (
+            model.name,
+            model.supports_comfort,
+            model.supports_eco,
+            model.model_type,
+            getattr(model, 'has_temp_sensor', False),
+            getattr(model, 'requires_control_panel', False),
+        )
     
     # Fallback: some devices use 000 prefix (legacy firmware or manufacturing variant) and are NTB-2R compatible
     if model_prefix == '000':
-        return ("NTB-2R", True, True)
+        return ("NTB-2R", True, True, "thermostat_floor", False, False)
     
     # Default for unknown models
-    return ("Unknown", False, False)
+    return ("Unknown", False, False, "unknown", False, False)
 
 
 def format_serial_display(serial: str) -> str:
@@ -405,11 +412,13 @@ def get_zones_data() -> List[Dict[str, Any]]:
         for demo_zone in DEMO_ZONES:
             # Detect device type for EACH component individually
             components_types = []
+            components_categories = []
             any_supports_temp = False
             any_manual = False
             for comp_serial in demo_zone['components']:
-                cname, csupports_comfort, csupports_eco = detect_device_type(comp_serial)
+                cname, csupports_comfort, csupports_eco, cmodel_type, _, _ = detect_device_type(comp_serial)
                 components_types.append(cname)
+                components_categories.append(cmodel_type)
                 if csupports_comfort or csupports_eco:
                     any_supports_temp = True
                 else:
@@ -417,6 +426,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
 
             # Use first component's type for the zone-level device_type field
             device_name = components_types[0] if components_types else "Unknown"
+            device_category = components_categories[0] if components_categories else "unknown"
 
             # Format components for display
             components_display = [format_serial_display(c) for c in demo_zone['components']]
@@ -432,6 +442,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'components': demo_zone['components'],
                 'components_display': components_display,
                 'components_types': components_types,
+                'components_categories': components_categories,
                 'components_names': components_names,
                 'current_temperature': demo_zone['current_temp'],
                 'comfort_temperature': demo_zone['comfort_temp'],
@@ -440,6 +451,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'current_mode': demo_zone['mode'],
                 'active_override_id': demo_zone.get('override_id'),
                 'device_type': device_name,
+                'device_category': device_category,
                 'supports_comfort': any_supports_temp,
                 'supports_eco': any_supports_temp,
                 'supports_temp_adjust': any_supports_temp,
@@ -464,11 +476,13 @@ def get_zones_data() -> List[Dict[str, Any]]:
             
             # Detect device type for EACH component individually
             components_types = []
+            components_categories = []
             any_supports_temp = False
             any_manual = False
             for comp_serial in zone_components:
-                cname, csupports_comfort, csupports_eco = detect_device_type(comp_serial)
+                cname, csupports_comfort, csupports_eco, cmodel_type, _, _ = detect_device_type(comp_serial)
                 components_types.append(cname)
+                components_categories.append(cmodel_type)
                 if csupports_comfort or csupports_eco:
                     any_supports_temp = True
                 else:
@@ -477,8 +491,10 @@ def get_zones_data() -> List[Dict[str, Any]]:
             # Use first component's type for zone-level device_type field
             if zone_components:
                 device_name = components_types[0]
+                device_category = components_categories[0]
             else:
                 device_name = "Unknown"
+                device_category = "unknown"
             
             # Format components for display
             components_display = [format_serial_display(c) for c in zone_components]
@@ -503,6 +519,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'components': zone_components,
                 'components_display': components_display,
                 'components_types': components_types,
+                'components_categories': components_categories,
                 'components_names': [''] * len(zone_components),
                 'current_temperature': current_temp,
                 'comfort_temperature': comfort_temp,
@@ -511,6 +528,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'current_mode': mode,
                 'active_override_id': zone.get('active_override_id'),
                 'device_type': device_name,
+                'device_category': device_category,
                 'supports_comfort': any_supports_temp,
                 'supports_eco': any_supports_temp,
                 'supports_temp_adjust': any_supports_temp,
@@ -754,9 +772,9 @@ async def set_zone_override(zone_id: str, mode: str):
     
     # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
     mode_map = {
-        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
-        'eco': pynobo.API.OVERRIDE_MODE_ECO,
-        'away': pynobo.API.OVERRIDE_MODE_AWAY,
+        'comfort': pynobo.nobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.nobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.nobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1  # Special case: remove override
     }
     
@@ -790,7 +808,7 @@ async def set_zone_override(zone_id: str, mode: str):
         
         if mode == 'normal':
             # Remove override - return to schedule
-            hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+            hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
             add_log_entry(
                 "sent",
                 f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
@@ -836,7 +854,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
             any_supports = False
             device_name = "Unknown"
             for i, comp in enumerate(demo_zone['components']):
-                cname, csupports_comfort, csupports_eco = detect_device_type(comp)
+                cname, csupports_comfort, csupports_eco, _, _, _ = detect_device_type(comp)
                 if i == 0:
                     device_name = cname
                 if csupports_comfort or csupports_eco:
@@ -886,7 +904,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
         any_supports = False
         device_name = "Unknown"
         for i, comp_serial in enumerate(zone_components):
-            cname, csupports_comfort, csupports_eco = detect_device_type(comp_serial)
+            cname, csupports_comfort, csupports_eco, _, _, _ = detect_device_type(comp_serial)
             if i == 0:
                 device_name = cname
             if csupports_comfort or csupports_eco:
@@ -950,9 +968,9 @@ async def set_global_override(mode: str):
     # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
     # 'home' is an alias for 'normal' (cancel all overrides)
     mode_map = {
-        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
-        'eco': pynobo.API.OVERRIDE_MODE_ECO,
-        'away': pynobo.API.OVERRIDE_MODE_AWAY,
+        'comfort': pynobo.nobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.nobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.nobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1,
         'home': -1  # Home mode = cancel all overrides, return to schedules
     }
@@ -986,7 +1004,7 @@ async def set_global_override(mode: str):
         # Apply override to all zones
         for zone_id in hub.zones.keys():
             if mode == 'normal' or mode == 'home':
-                hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+                hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
                 add_log_entry(
                     "sent",
                     f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
@@ -1162,6 +1180,33 @@ async def update_zone_schedule(zone_id: str, schedule: dict):
 
 
 # ===== Device Management API Endpoints =====
+@app.get("/api/device-models")
+async def get_device_models():
+    """Return the full catalog of supported device models from pynobo"""
+    models = {}
+    for prefix, model in pynobo.nobo.MODELS.items():
+        models[prefix] = {
+            "prefix": prefix,
+            "name": model.name,
+            "model_type": model.model_type,
+            "supports_comfort": model.supports_comfort,
+            "supports_eco": model.supports_eco,
+            "has_temp_sensor": getattr(model, 'has_temp_sensor', False),
+            "requires_control_panel": getattr(model, 'requires_control_panel', False),
+        }
+    # Add the 000 fallback entry
+    models["000"] = {
+        "prefix": "000",
+        "name": "NTB-2R",
+        "model_type": "thermostat_floor",
+        "supports_comfort": True,
+        "supports_eco": True,
+        "has_temp_sensor": False,
+        "requires_control_panel": False,
+    }
+    return {"models": models}
+
+
 @app.get("/api/devices")
 async def get_devices():
     """Get all registered devices with their zone assignments"""
@@ -1177,11 +1222,12 @@ async def get_devices():
         
         for zone in zones_data:
             for i, serial in enumerate(zone['components']):
-                device_name, supports_comfort, supports_eco = detect_device_type(serial)
+                device_name, supports_comfort, supports_eco, device_category, _, _ = detect_device_type(serial)
                 devices.append({
                     'serial': serial,
                     'serial_display': zone['components_display'][i] if i < len(zone['components_display']) else format_serial_display(serial),
                     'device_type': device_name,
+                    'device_category': device_category,
                     'zone_id': zone['zone_id'],
                     'zone_name': zone['name'],
                     'supports_comfort': supports_comfort,
@@ -1218,7 +1264,7 @@ async def add_device(device: DeviceAdd):
             raise HTTPException(status_code=400, detail="Serial number must be 12 digits")
         
         # Auto-detect device type
-        device_name, supports_comfort, supports_eco = detect_device_type(serial)
+        device_name, supports_comfort, supports_eco, _, _, _ = detect_device_type(serial)
         if device_name == "Unknown":
             raise HTTPException(status_code=400, detail=f"Unknown device model for serial prefix {serial[:3]}")
         
@@ -1260,28 +1306,52 @@ async def add_device(device: DeviceAdd):
 
 
 class DeviceReplace(BaseModel):
-    new_serial: str
+    new_serial: Optional[str] = None
+    name: Optional[str] = None
 
 
 @app.put("/api/devices/{serial}")
 async def replace_device(serial: str, replacement: DeviceReplace):
-    """Replace a device with a new one"""
+    """Replace a device with a new one, or rename it (update component_names)"""
     with connection_lock:
         connected = hub_connected
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
+    if not replacement.new_serial and replacement.name is None:
+        raise HTTPException(status_code=400, detail="Provide new_serial (to replace) or name (to rename)")
+    
     try:
-        # Parse serials
         old_serial = parse_serial_input(serial)
-        new_serial = parse_serial_input(replacement.new_serial)
         
+        # Rename-only operation
+        if replacement.new_serial is None:
+            if DEMO_MODE:
+                found = False
+                for demo_zone in DEMO_ZONES:
+                    if old_serial in demo_zone['components']:
+                        idx = demo_zone['components'].index(old_serial)
+                        if 'component_names' not in demo_zone:
+                            demo_zone['component_names'] = [''] * len(demo_zone['components'])
+                        demo_zone['component_names'][idx] = replacement.name or ''
+                        found = True
+                        logger.info(f"Demo mode: Device {old_serial} renamed to '{replacement.name}'")
+                        break
+                if not found:
+                    raise HTTPException(status_code=404, detail="Device not found")
+                return {"status": "success", "serial": old_serial, "name": replacement.name or ''}
+            if not hub:
+                raise HTTPException(status_code=503, detail="Hub not connected")
+            raise HTTPException(status_code=501, detail="Rename device not yet implemented for real hub")
+
+        # Replace (serial swap) operation
+        new_serial = parse_serial_input(replacement.new_serial)
         if len(new_serial) != 12:
             raise HTTPException(status_code=400, detail="New serial number must be 12 digits")
         
         # Auto-detect new device type
-        device_name, _, _ = detect_device_type(new_serial)
+        device_name, _, _, _, _, _ = detect_device_type(new_serial)
         if device_name == "Unknown":
             raise HTTPException(status_code=400, detail=f"Unknown device model for serial prefix {new_serial[:3]}")
         
@@ -1292,6 +1362,8 @@ async def replace_device(serial: str, replacement: DeviceReplace):
                 if old_serial in demo_zone['components']:
                     idx = demo_zone['components'].index(old_serial)
                     demo_zone['components'][idx] = new_serial
+                    if replacement.name is not None and 'component_names' in demo_zone:
+                        demo_zone['component_names'][idx] = replacement.name
                     found = True
                     logger.info(f"Demo mode: Device {old_serial} replaced with {new_serial} in zone {demo_zone['zone_id']}")
                     break
