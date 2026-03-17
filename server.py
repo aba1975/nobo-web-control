@@ -754,9 +754,9 @@ async def set_zone_override(zone_id: str, mode: str):
     
     # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
     mode_map = {
-        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
-        'eco': pynobo.API.OVERRIDE_MODE_ECO,
-        'away': pynobo.API.OVERRIDE_MODE_AWAY,
+        'comfort': pynobo.nobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.nobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.nobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1  # Special case: remove override
     }
     
@@ -790,7 +790,7 @@ async def set_zone_override(zone_id: str, mode: str):
         
         if mode == 'normal':
             # Remove override - return to schedule
-            hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+            hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
             add_log_entry(
                 "sent",
                 f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
@@ -950,9 +950,9 @@ async def set_global_override(mode: str):
     # Validate mode — 'off' is not a valid Nobø Eco Hub override mode
     # 'home' is an alias for 'normal' (cancel all overrides)
     mode_map = {
-        'comfort': pynobo.API.OVERRIDE_MODE_COMFORT,
-        'eco': pynobo.API.OVERRIDE_MODE_ECO,
-        'away': pynobo.API.OVERRIDE_MODE_AWAY,
+        'comfort': pynobo.nobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.nobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.nobo.API.OVERRIDE_MODE_AWAY,
         'normal': -1,
         'home': -1  # Home mode = cancel all overrides, return to schedules
     }
@@ -986,7 +986,7 @@ async def set_global_override(mode: str):
         # Apply override to all zones
         for zone_id in hub.zones.keys():
             if mode == 'normal' or mode == 'home':
-                hub.create_override('now', 0, pynobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+                hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
                 add_log_entry(
                     "sent",
                     f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",

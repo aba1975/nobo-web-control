@@ -27,7 +27,7 @@ $DemoMode       = $true                                          # $true = demo 
 $Branch         = "copilot/consolidate-feature-work-from-pr-7-8-9"
 $RepoUrl        = "https://github.com/aba1975/nobo-web-control.git"
 # Fallback commit SHA — use when git checkout $Branch fails (e.g. old Git clients)
-$FallbackSHA    = "047ec3394fc66a2c6507f391983b2fc64b50372c"
+$FallbackSHA    = "2f456b48222f2d659b52b1c2c05e39fe30b5599b"
 
 Write-Host "Configuration loaded." -ForegroundColor Cyan
 Write-Host "  Install dir : $InstallDir"
@@ -136,13 +136,14 @@ if (Test-Path $InstallDir) {
 Write-Host "`n=== Cloning repository ===" -ForegroundColor Cyan
 
 try {
-    # Step 3a — Clone the default branch
+    # Step 3a — Clone the default branch (or skip if repo exists)
     if (Test-Path (Join-Path $InstallDir ".git")) {
         Write-Host "  [INFO] Git repo already exists in $InstallDir. Skipping initial clone." -ForegroundColor Yellow
     } else {
         Write-Host "  Cloning $RepoUrl into $InstallDir ..." -ForegroundColor Cyan
-        & git clone $RepoUrl $InstallDir
-        if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)" }
+        $cloneOutput = & git clone $RepoUrl $InstallDir 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)`n$cloneOutput" }
+        Write-Host $cloneOutput -ForegroundColor DarkGray
         Write-Host "  [OK] Clone complete." -ForegroundColor Green
     }
 
@@ -150,20 +151,32 @@ try {
     Set-Location $InstallDir
 
     Write-Host "  Fetching branch: $Branch ..." -ForegroundColor Cyan
-    & git fetch origin $Branch
-    if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)" }
+    $fetchOutput = & git fetch origin $Branch 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)`n$fetchOutput" }
+    Write-Host $fetchOutput -ForegroundColor DarkGray
 
     Write-Host "  Checking out: $Branch ..." -ForegroundColor Cyan
-    & git checkout $Branch
-    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)" }
+    $checkoutOutput = & git checkout $Branch 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)`n$checkoutOutput" }
+    Write-Host $checkoutOutput -ForegroundColor DarkGray
 
-    Write-Host "  [OK] Branch '$Branch' checked out." -ForegroundColor Green
+    # Pull latest changes
+    Write-Host "  Pulling latest changes..." -ForegroundColor Cyan
+    $pullOutput = & git pull origin $Branch 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { throw "git pull failed (exit code $LASTEXITCODE)`n$pullOutput" }
+    Write-Host $pullOutput -ForegroundColor DarkGray
 
-    # Verify
-    if (Test-Path (Join-Path $InstallDir "server.py")) {
-        Write-Host "  [OK] Verified: server.py exists." -ForegroundColor Green
-    } else {
-        Write-Host "  [WARN] server.py not found. The checkout may be on the wrong branch." -ForegroundColor Yellow
+    Write-Host "  [OK] Branch '$Branch' checked out and up to date." -ForegroundColor Green
+
+    # Verify key files exist
+    $verifyFiles = @("server.py", "requirements.txt")
+    foreach ($vf in $verifyFiles) {
+        $vfPath = Join-Path $InstallDir $vf
+        if (Test-Path $vfPath) {
+            Write-Host "  [OK] Verified: $vf exists." -ForegroundColor Green
+        } else {
+            Write-Host "  [WARN] $vf not found. The checkout may be on the wrong branch." -ForegroundColor Yellow
+        }
     }
 } catch {
     Write-Host "  [FAIL] Repository setup failed: $_" -ForegroundColor Red
