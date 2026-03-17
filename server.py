@@ -202,7 +202,7 @@ def detect_device_type(serial: str) -> tuple[str, bool, bool, str, bool, bool]:
             model.name,
             model.supports_comfort,
             model.supports_eco,
-            model.model_type,
+            model.type,
             getattr(model, 'has_temp_sensor', False),
             getattr(model, 'requires_control_panel', False),
         )
@@ -1188,7 +1188,7 @@ async def get_device_models():
         models[prefix] = {
             "prefix": prefix,
             "name": model.name,
-            "model_type": model.model_type,
+            "model_type": model.type,
             "supports_comfort": model.supports_comfort,
             "supports_eco": model.supports_eco,
             "has_temp_sensor": getattr(model, 'has_temp_sensor', False),
