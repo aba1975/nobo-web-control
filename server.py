@@ -28,12 +28,13 @@ logger = logging.getLogger(__name__)
 # ===== CONFIGURATION =====
 # Replace these with your actual Nobø Hub values
 # You can also set them via environment variables: NOBO_SERIAL and NOBO_IP
-NOBO_SERIAL = os.environ.get('NOBO_SERIAL', '111111111111')  # Replace with your hub's 12-digit serial number
+DEMO_SERIAL_NUMBER = '111111111111'  # Reserved serial that triggers demo mode (never connects to a real hub)
+NOBO_SERIAL = os.environ.get('NOBO_SERIAL', DEMO_SERIAL_NUMBER)  # Replace with your hub's 12-digit serial number
 NOBO_IP = os.environ.get('NOBO_IP', '10.0.0.100')  # Replace with your hub's IP address
 
 # Demo mode - set to True to use simulated data instead of connecting to real hub
-# Can be enabled via environment variable or using the test serial number
-DEMO_MODE = os.environ.get('NOBO_DEMO', '').lower() in ('true', '1', 'yes') or NOBO_SERIAL == '111111111111'
+# Can be enabled via environment variable or using the reserved demo serial number
+DEMO_MODE = os.environ.get('NOBO_DEMO', '').lower() in ('true', '1', 'yes') or NOBO_SERIAL == DEMO_SERIAL_NUMBER
 DEMO_SOFTWARE_VERSION = "1.4.0 (Simulated)"  # Software version shown in demo mode
 
 # Demo mode zone data - 8 grouped zones with realistic Norwegian indoor temperatures
@@ -144,7 +145,7 @@ DEMO_ZONES = [
     },
 ]
 
-# Away temperature (set by Nobø, not configurable)
+# Away temperature used by Nobø system for the "away" mode (7°C is the fixed Nobø standard — not user-configurable)
 AWAY_TEMPERATURE = 7.0
 
 # ========================
@@ -1458,6 +1459,10 @@ if __name__ == "__main__":
     logger.info("Starting Nobø Web Control Server...")
     logger.info(f"Hub Serial: {NOBO_SERIAL}")
     logger.info(f"Hub IP: {NOBO_IP}")
+    if not DEMO_MODE and NOBO_SERIAL == DEMO_SERIAL_NUMBER:
+        logger.warning("Running with default demo serial — set NOBO_SERIAL to your hub's 12-digit serial number")
+    if not DEMO_MODE and NOBO_IP == '10.0.0.100':
+        logger.warning("Running with default IP address — set NOBO_IP to your hub's actual IP address")
     logger.info("Access the web interface at http://localhost:8000")
     
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
