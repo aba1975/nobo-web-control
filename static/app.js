@@ -648,12 +648,12 @@ function renderZoneDetail(zoneId) {
                 <div class="component-info">
                     <div class="component-name-row">
                         <span id="deviceNameDisplay-${serial}" class="component-name">${escapeHtml(componentName)}</span>
-                        <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName)})">✏️</button>
+                        <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName).replace(/"/g, '&quot;')})">✏️</button>
                     </div>
                     <div id="deviceNameEditRow-${serial}" class="device-name-edit-row" style="display:none;">
                         <input type="text" id="deviceNameInput-${serial}" class="device-name-input" value="${escapeHtml(componentName)}" maxlength="64">
                         <button class="btn btn-xs btn-primary" onclick="saveDeviceName('${serial}', '${zone.zone_id}')">Save</button>
-                        <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName)})">Cancel</button>
+                        <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName).replace(/"/g, '&quot;')})">Cancel</button>
                     </div>
                     <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
                     <span class="component-serial">${displaySerial}</span>
@@ -1310,12 +1310,12 @@ function renderDevicesList() {
                         <div class="device-info">
                             <div class="device-name-row">
                                 <span id="deviceNameDisplay-${serial}" class="device-serial">${escapeHtml(componentName)}</span>
-                                <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName)})">✏️</button>
+                                <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName).replace(/"/g, '&quot;')})">✏️</button>
                             </div>
                             <div id="deviceNameEditRow-${serial}" class="device-name-edit-row" style="display:none;">
                                 <input type="text" id="deviceNameInput-${serial}" class="device-name-input" value="${escapeHtml(componentName)}" maxlength="64">
                                 <button class="btn btn-xs btn-primary" onclick="saveDeviceName('${serial}', '${zone.zone_id}')">Save</button>
-                                <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName)})">Cancel</button>
+                                <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName).replace(/"/g, '&quot;')})">Cancel</button>
                             </div>
                             <div class="device-serial-row">${displaySerial}</div>
                             <div class="device-type">${componentType}</div>
@@ -1388,11 +1388,9 @@ function detectInlineDeviceModel(zoneId) {
     const serial = serialInput.value.replace(/\s/g, '');
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';
@@ -1489,12 +1487,9 @@ function detectDeviceModel() {
     
     if (serial.length >= 3) {
         const prefix = serial.slice(0, 3);
-        
-        if (prefix === '210' || prefix === '000') {
-            detectedModel.textContent = '→ Auto-detected: NTB-2R ✅';
-            detectedModel.style.color = '#27ae60';
-        } else if (prefix === '160') {
-            detectedModel.textContent = '→ Auto-detected: R80 RDC 700 ✅';
+        const model = DEVICE_MODELS[prefix];
+        if (model) {
+            detectedModel.textContent = `→ Auto-detected: ${model.name} ✅`;
             detectedModel.style.color = '#27ae60';
         } else {
             detectedModel.textContent = '→ Unknown device model';
