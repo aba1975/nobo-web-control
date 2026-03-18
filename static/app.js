@@ -19,6 +19,45 @@ let copyDayPopoverDay = null; // which day's copy popover is currently open
 const SCHEDULE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const SCHEDULE_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+// Maps serial prefix → { name, image } where image is the slug for /static/images/{slug}.png
+const DEVICE_MODELS = {
+    '000': { name: 'NTB-2R',                  image: 'ntb-2r' },
+    '120': { name: 'RS 700',                   image: 'placeholder' },
+    '121': { name: 'RSX 700',                  image: 'placeholder' },
+    '130': { name: 'RCE 700',                  image: 'placeholder' },
+    '160': { name: 'R80 RDC 700',              image: 'r80-rdc-700' },
+    '165': { name: 'R80 RDC 700 LST (GB)',     image: 'r80-rdc-700' },
+    '168': { name: 'NCU-2R',                   image: 'ncu-2r' },
+    '169': { name: 'DCU-2R',                   image: 'placeholder' },
+    '170': { name: 'Serie 18, ewt touch',      image: 'placeholder' },
+    '180': { name: '2NC9 700',                 image: '2nc9-700' },
+    '182': { name: 'R80 RSC 700',              image: 'r80-rsc-700' },
+    '183': { name: 'R80 RSC 700',              image: 'r80-rsc-700' },
+    '184': { name: 'NCU-1R',                   image: 'ncu-1r' },
+    '186': { name: 'DCU-1R',                   image: 'placeholder' },
+    '190': { name: 'Safir',                    image: 'placeholder' },
+    '192': { name: 'R80 TXF 700',              image: 'r80-txf-700' },
+    '194': { name: 'R80 RXC 700',              image: 'r80-rxc-700' },
+    '198': { name: 'NCU-ER',                   image: 'ncu-er' },
+    '199': { name: 'DCU-ER',                   image: 'dcu-er' },
+    '200': { name: 'TRB 36 700',               image: 'trb-36-700' },
+    '210': { name: 'NTB-2R',                   image: 'ntb-2r' },
+    '220': { name: 'TR36',                     image: 'tr36' },
+    '230': { name: 'TCU 700',                  image: 'placeholder' },
+    '231': { name: 'THB 700',                  image: 'placeholder' },
+    '232': { name: 'TXB 700',                  image: 'placeholder' },
+    '234': { name: 'SW4',                      image: 'placeholder' },
+};
+
+function deviceImageTag(serial, altText, cssClass) {
+    const prefix = String(serial).replace(/\s/g, '').slice(0, 3);
+    const model = DEVICE_MODELS[prefix];
+    const slug = model ? model.image : 'placeholder';
+    const cls = cssClass ? ` class="${cssClass}"` : '';
+    const alt = altText || (model ? model.name : 'Device');
+    return `<img src="/static/images/${slug}.png" alt="${escapeHtml(alt)}"${cls} onerror="this.onerror=null;this.src='/static/images/${slug}.svg';this.onerror=function(){this.src='/static/images/placeholder.svg';};">`;
+}
+
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Nobø Control - Initializing...');
@@ -504,14 +543,6 @@ function renderZoneDetail(zoneId) {
     const supportsTemp = zone.supports_temp_adjust || false;
     const hasManualDevices = zone.has_manual_devices || false;
     
-    // Product image
-    const deviceImage = deviceType === 'NTB-2R' 
-        ? '/static/images/ntb-2r.svg' 
-        : '/static/images/r80-rdc-700.svg';
-    
-    // Device badge
-    const deviceBadgeClass = deviceType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
-    
     // Status
     const statusIcon = hasOverride ? '⚡' : '📅';
     const statusText = hasOverride 
@@ -610,11 +641,23 @@ function renderZoneDetail(zoneId) {
         const componentName = zone.components_names && zone.components_names[idx] ? zone.components_names[idx] : roomName;
         const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
         const typeBadgeClass = componentType === 'NTB-2R' ? 'device-badge-blue' : 'device-badge-grey';
+        const imgTag = deviceImageTag(serial, componentType, 'component-img');
         return `
             <div class="component-item">
-                <span class="component-name">📟 ${componentName}</span>
-                <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
-                <span class="component-serial">${displaySerial}</span>
+                ${imgTag}
+                <div class="component-info">
+                    <div class="component-name-row">
+                        <span id="deviceNameDisplay-${serial}" class="component-name">${escapeHtml(componentName)}</span>
+                        <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName)})">✏️</button>
+                    </div>
+                    <div id="deviceNameEditRow-${serial}" class="device-name-edit-row" style="display:none;">
+                        <input type="text" id="deviceNameInput-${serial}" class="device-name-input" value="${escapeHtml(componentName)}" maxlength="64">
+                        <button class="btn btn-xs btn-primary" onclick="saveDeviceName('${serial}', '${zone.zone_id}')">Save</button>
+                        <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName)})">Cancel</button>
+                    </div>
+                    <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
+                    <span class="component-serial">${displaySerial}</span>
+                </div>
             </div>
         `;
     }).join('');
@@ -632,6 +675,11 @@ function renderZoneDetail(zoneId) {
                            placeholder="210 000 016 247" maxlength="15"
                            oninput="formatSerialInput(this); detectInlineDeviceModel('${zone.zone_id}')">
                     <span id="inlineDetectedModel-${zone.zone_id}" class="detected-model"></span>
+                </div>
+                <div class="form-group">
+                    <label for="inlineDeviceName-${zone.zone_id}">Device Name:</label>
+                    <input type="text" id="inlineDeviceName-${zone.zone_id}"
+                           placeholder="e.g. Living Room Heater" maxlength="64">
                 </div>
                 <div class="form-actions">
                     <button class="btn btn-primary" onclick="addDeviceToZone('${zone.zone_id}')">
@@ -651,11 +699,6 @@ function renderZoneDetail(zoneId) {
         <div class="zone-detail">
             <div class="zone-detail-header">
                 <button class="back-btn" onclick="navigateBack()">← Back to Main</button>
-            </div>
-            
-            <div class="zone-detail-image">
-                <img src="${deviceImage}" alt="${deviceType}">
-                <div class="device-badge ${deviceBadgeClass}">${deviceType}</div>
             </div>
             
             <div class="zone-detail-title">
@@ -1047,6 +1090,32 @@ function selectMode(containerId, mode) {
     });
 }
 
+function resolveOverlaps(blocks, startMin, endMin) {
+    // Returns a new blocks array with any blocks overlapping [startMin, endMin] trimmed, split, or removed.
+    const result = [];
+    for (const block of blocks) {
+        const bStart = timeToMinutes(block.start);
+        const bEnd = timeToMinutes(block.end);
+        if (startMin >= bEnd || endMin <= bStart) {
+            // No overlap — keep as-is
+            result.push(block);
+        } else if (startMin <= bStart && endMin >= bEnd) {
+            // New block completely covers this block — remove it
+        } else if (startMin > bStart && endMin < bEnd) {
+            // New block is in the middle — split into two
+            result.push({ start: block.start, end: minutesToTime(startMin), mode: block.mode });
+            result.push({ start: minutesToTime(endMin), end: block.end, mode: block.mode });
+        } else if (startMin <= bStart) {
+            // New block cuts the start — trim existing block's start
+            result.push({ start: minutesToTime(endMin), end: block.end, mode: block.mode });
+        } else {
+            // New block cuts the end — trim existing block's end
+            result.push({ start: block.start, end: minutesToTime(startMin), mode: block.mode });
+        }
+    }
+    return result;
+}
+
 function submitAddTimeBlock(day) {
     const startEl = document.getElementById(`formStart-${day}`);
     const endEl = document.getElementById(`formEnd-${day}`);
@@ -1062,19 +1131,10 @@ function submitAddTimeBlock(day) {
         return;
     }
 
-    const blocks = scheduleData[day] || [];
+    if (!scheduleData[day]) scheduleData[day] = [];
     const startMin = timeToMinutes(start);
     const endMin = timeToMinutes(end);
-    for (const block of blocks) {
-        const bStart = timeToMinutes(block.start);
-        const bEnd = timeToMinutes(block.end);
-        if (startMin < bEnd && endMin > bStart) {
-            showToast(`Overlaps with ${block.mode} block (${block.start}–${block.end}). Edit or delete it first.`, 'error');
-            return;
-        }
-    }
-
-    if (!scheduleData[day]) scheduleData[day] = [];
+    scheduleData[day] = resolveOverlaps(scheduleData[day], startMin, endMin);
     scheduleData[day].push({ start, end, mode });
     scheduleData[day].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
     fillGaps(day);
@@ -1098,20 +1158,12 @@ function submitEditTimeBlock(day, blockIndex) {
         return;
     }
 
-    const blocks = scheduleData[day] || [];
+    // Remove the block being edited, then resolve overlaps among remaining blocks
+    const remaining = (scheduleData[day] || []).filter((_, i) => i !== blockIndex);
     const startMin = timeToMinutes(start);
     const endMin = timeToMinutes(end);
-    for (let i = 0; i < blocks.length; i++) {
-        if (i === blockIndex) continue;
-        const bStart = timeToMinutes(blocks[i].start);
-        const bEnd = timeToMinutes(blocks[i].end);
-        if (startMin < bEnd && endMin > bStart) {
-            showToast(`Overlaps with ${blocks[i].mode} block (${blocks[i].start}–${blocks[i].end}).`, 'error');
-            return;
-        }
-    }
-
-    scheduleData[day][blockIndex] = { start, end, mode };
+    scheduleData[day] = resolveOverlaps(remaining, startMin, endMin);
+    scheduleData[day].push({ start, end, mode });
     scheduleData[day].sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
     fillGaps(day);
     activeFormState = null;
@@ -1239,6 +1291,7 @@ function renderDevicesList() {
                 const componentType = zone.components_types && zone.components_types[idx] ? zone.components_types[idx] : (zone.device_type || 'Unknown');
                 const supportsTemp = zone.supports_temp_adjust || false;
                 const mode = zone.current_mode || 'normal';
+                const imgTag = deviceImageTag(serial, componentType, 'device-list-img');
 
                 // Mode badge
                 const modeBadgeClass = mode === 'comfort' ? 'mode-badge-comfort'
@@ -1251,10 +1304,22 @@ function renderDevicesList() {
 
                 devicesHtml += `
                     <div class="device-item">
+                        <div class="device-image-col">
+                            ${imgTag}
+                        </div>
                         <div class="device-info">
-                            <div class="device-serial">📟 ${componentName} — ${displaySerial}</div>
+                            <div class="device-name-row">
+                                <span id="deviceNameDisplay-${serial}" class="device-serial">${escapeHtml(componentName)}</span>
+                                <button class="btn btn-xs btn-icon" title="Edit name" onclick="startEditDeviceName('${serial}', '${zone.zone_id}', ${JSON.stringify(componentName)})">✏️</button>
+                            </div>
+                            <div id="deviceNameEditRow-${serial}" class="device-name-edit-row" style="display:none;">
+                                <input type="text" id="deviceNameInput-${serial}" class="device-name-input" value="${escapeHtml(componentName)}" maxlength="64">
+                                <button class="btn btn-xs btn-primary" onclick="saveDeviceName('${serial}', '${zone.zone_id}')">Save</button>
+                                <button class="btn btn-xs btn-secondary" onclick="cancelEditDeviceName('${serial}', ${JSON.stringify(componentName)})">Cancel</button>
+                            </div>
+                            <div class="device-serial-row">${displaySerial}</div>
                             <div class="device-type">${componentType}</div>
-                            <div class="device-zone">→ ${zone.name}</div>
+                            <div class="device-zone">→ ${escapeHtml(zone.name)}</div>
                             <div class="device-status-row">
                                 <span class="device-mode-badge ${modeBadgeClass}">${modeLabel}</span>
                                 <span class="device-temp-support">${tempLabel}</span>
@@ -1307,10 +1372,12 @@ function closeInlineAddDevice(zoneId) {
     const form = document.getElementById(`inlineAddDeviceForm-${zoneId}`);
     const btn = document.getElementById(`openInlineAddDeviceBtn-${zoneId}`);
     const serialInput = document.getElementById(`inlineDeviceSerial-${zoneId}`);
+    const nameInput = document.getElementById(`inlineDeviceName-${zoneId}`);
     const modelSpan = document.getElementById(`inlineDetectedModel-${zoneId}`);
     if (form) form.style.display = 'none';
     if (btn) btn.style.display = '';
     if (serialInput) serialInput.value = '';
+    if (nameInput) nameInput.value = '';
     if (modelSpan) modelSpan.textContent = '';
 }
 
@@ -1338,8 +1405,10 @@ function detectInlineDeviceModel(zoneId) {
 
 async function addDeviceToZone(zoneId) {
     const serialInput = document.getElementById(`inlineDeviceSerial-${zoneId}`);
+    const nameInput = document.getElementById(`inlineDeviceName-${zoneId}`);
     if (!serialInput) return;
     const serial = serialInput.value.replace(/\s/g, '');
+    const name = nameInput ? nameInput.value.trim() : '';
 
     if (!serial || serial.length !== 12) {
         showToast('Please enter a valid 12-digit serial number', 'warning');
@@ -1350,7 +1419,7 @@ async function addDeviceToZone(zoneId) {
         const response = await fetch('/api/devices', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serial, zone_id: zoneId })
+            body: JSON.stringify({ serial, zone_id: zoneId, name: name || undefined })
         });
 
         if (!response.ok) {
@@ -1539,6 +1608,73 @@ async function removeDevice(serial, zoneId) {
         showToast('Device removed successfully', 'success');
     } catch (error) {
         console.error('Error removing device:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// ===== Device Name Edit =====
+function startEditDeviceName(serial, zoneId, currentName) {
+    const displayEl = document.getElementById(`deviceNameDisplay-${serial}`);
+    const editRow = document.getElementById(`deviceNameEditRow-${serial}`);
+    const input = document.getElementById(`deviceNameInput-${serial}`);
+    if (displayEl) displayEl.style.display = 'none';
+    if (editRow) editRow.style.display = '';
+    if (input) {
+        input.value = currentName;
+        input.focus();
+        const onKey = (e) => {
+            if (e.key === 'Enter') {
+                input.removeEventListener('keydown', onKey);
+                saveDeviceName(serial, zoneId);
+            } else if (e.key === 'Escape') {
+                input.removeEventListener('keydown', onKey);
+                cancelEditDeviceName(serial, currentName);
+            }
+        };
+        input.addEventListener('keydown', onKey);
+    }
+}
+
+function cancelEditDeviceName(serial, originalName) {
+    const displayEl = document.getElementById(`deviceNameDisplay-${serial}`);
+    const editRow = document.getElementById(`deviceNameEditRow-${serial}`);
+    const input = document.getElementById(`deviceNameInput-${serial}`);
+    if (displayEl) displayEl.style.display = '';
+    if (editRow) editRow.style.display = 'none';
+    if (input) input.value = originalName;
+}
+
+async function saveDeviceName(serial, zoneId) {
+    const input = document.getElementById(`deviceNameInput-${serial}`);
+    if (!input) return;
+    const name = input.value.trim();
+    if (!name) {
+        showToast('Device name cannot be empty', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${serial}/name`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to update device name');
+        }
+
+        await fetchZones();
+        // Re-render whichever view is active
+        if (currentPage === 'zoneDetail' && currentZoneDetail) {
+            renderZoneDetail(currentZoneDetail);
+        } else {
+            renderDevicesList();
+        }
+        showToast(`Device renamed to "${name}"`, 'success');
+    } catch (error) {
+        console.error('Error saving device name:', error);
         showToast(error.message, 'error');
     }
 }
@@ -1831,6 +1967,9 @@ window.openInlineAddDevice = openInlineAddDevice;
 window.closeInlineAddDevice = closeInlineAddDevice;
 window.detectInlineDeviceModel = detectInlineDeviceModel;
 window.addDeviceToZone = addDeviceToZone;
+window.startEditDeviceName = startEditDeviceName;
+window.cancelEditDeviceName = cancelEditDeviceName;
+window.saveDeviceName = saveDeviceName;
 window.openAddZoneModal = openAddZoneModal;
 window.closeAddZoneModal = closeAddZoneModal;
 window.addZone = addZone;
