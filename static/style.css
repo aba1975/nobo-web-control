@@ -3163,3 +3163,96 @@ select:focus-visible {
     border-radius: 8px;
     display: inline-block;
 }
+
+/* ===== Device images in list ===== */
+.device-image-col {
+    flex-shrink: 0;
+    width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.device-list-img {
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+/* ===== Device name edit row ===== */
+.device-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.device-name-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.device-name-input {
+    font-size: var(--text-sm);
+    padding: 3px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-card-bg);
+    color: var(--color-text-primary);
+    flex: 1;
+    min-width: 0;
+}
+
+.device-serial-row {
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    margin-bottom: 4px;
+}
+
+/* ===== Icon-only button ===== */
+.btn-icon {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    border-radius: 4px;
+    color: var(--color-text-secondary);
+    transition: background 0.15s;
+}
+
+.btn-icon:hover {
+    background: var(--color-hover-bg, rgba(127,140,141,0.15));
+}
+
+/* ===== Component image in zone detail ===== */
+.component-item {
+    gap: 10px;
+}
+
+.component-img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+    flex-shrink: 0;
+    border-radius: 6px;
+}
+
+.component-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.component-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}

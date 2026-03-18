@@ -1263,6 +1263,50 @@ class DeviceReplace(BaseModel):
     new_serial: str
 
 
+class DeviceRename(BaseModel):
+    name: str
+
+
+@app.patch("/api/devices/{serial}/name")
+async def rename_device(serial: str, body: DeviceRename):
+    """Update the friendly name of a device"""
+    with connection_lock:
+        connected = hub_connected
+
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+
+    try:
+        clean_serial = parse_serial_input(serial)
+        new_name = body.name.strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+        # Demo mode - update component_names in DEMO_ZONES
+        if DEMO_MODE:
+            for demo_zone in DEMO_ZONES:
+                if clean_serial in demo_zone['components']:
+                    idx = demo_zone['components'].index(clean_serial)
+                    if 'component_names' not in demo_zone:
+                        demo_zone['component_names'] = [''] * len(demo_zone['components'])
+                    demo_zone['component_names'][idx] = new_name
+                    logger.info(f"Demo mode: Device {clean_serial} renamed to '{new_name}'")
+                    return {"status": "success", "serial": clean_serial, "name": new_name}
+            raise HTTPException(status_code=404, detail="Device not found")
+
+        # Real hub mode
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+
+        raise HTTPException(status_code=501, detail="Device renaming is not yet supported for connected hubs")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error renaming device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.put("/api/devices/{serial}")
 async def replace_device(serial: str, replacement: DeviceReplace):
     """Replace a device with a new one"""
