@@ -498,16 +498,32 @@ function createZoneListItem(zone) {
         : '';
     
     const supportsTemp = zone.supports_temp_adjust || false;
-    const currentTemp = supportsTemp && zone.current_temperature != null
-        ? zone.current_temperature.toFixed(1) + '°C'
-        : '—';
+    let setTemp = '—';
+    let setTempAriaLabel = 'no temperature';
+    if (supportsTemp) {
+        let tempVal = null;
+        if (mode === 'comfort') {
+            tempVal = zone.comfort_temperature;
+        } else if (mode === 'eco') {
+            tempVal = zone.eco_temperature;
+        } else if (mode === 'away') {
+            tempVal = zone.away_temperature;
+        } else {
+            // 'normal' (schedule) or 'off' — show comfort as default target
+            tempVal = zone.comfort_temperature;
+        }
+        if (tempVal != null) {
+            setTemp = '🎯 ' + tempVal.toFixed(1) + '°C';
+            setTempAriaLabel = 'target temperature ' + tempVal.toFixed(1) + ' degrees Celsius';
+        }
+    }
     
     return `
         <div class="zone-list-item ripple-container" 
              onclick="navigateToZoneDetail('${zone.zone_id}')"
              role="button"
              tabindex="0"
-             aria-label="${zone.name}, ${currentTemp}, ${modeLabel}"
+             aria-label="${zone.name}, ${setTempAriaLabel}, ${modeLabel}"
              onkeydown="if(event.key==='Enter'||event.key===' ')navigateToZoneDetail('${zone.zone_id}')">
             <div class="zone-list-item-top">
                 <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
@@ -522,7 +538,7 @@ function createZoneListItem(zone) {
                 <div class="zone-list-chevron" aria-hidden="true">›</div>
             </div>
             <div class="zone-list-bottom">
-                <div class="zone-list-temp">${currentTemp}</div>
+                <div class="zone-list-temp">${setTemp}</div>
                 <div class="zone-list-mode${modeCssClass ? ' ' + modeCssClass : ''}">${modeLabel}</div>
             </div>
         </div>
