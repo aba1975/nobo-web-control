@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#2c3e50" id="metaThemeColor">
+    <meta name="description" content="Nobø Web Control — manage your Nobø heating system zones, schedules and devices from any browser.">
+    <meta name="theme-color" content="#1e2e42" id="metaThemeColor">
+    <meta name="color-scheme" content="light dark">
     <title>Nobø Control</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -30,7 +32,7 @@
             </nav>
             
             <div class="header-right">
-                <div class="connection-status">
+                <div class="connection-status" aria-live="polite" aria-atomic="true" title="Hub connection status">
                     <span class="status-dot" id="statusDot" aria-hidden="true"></span>
                     <span class="status-text" id="statusText">Connecting...</span>
                 </div>
@@ -62,18 +64,18 @@
                 <!-- Global Mode Buttons -->
                 <section class="global-controls">
                     <h2>Global Mode</h2>
-                    <div class="global-buttons">
-                        <button class="btn btn-mode btn-home active" onclick="setGlobalMode('home')" id="btnHome">
-                            <span class="icon">🏠</span> Home
+                    <div class="global-buttons" role="group" aria-label="Global heating mode">
+                        <button class="btn btn-mode btn-home active" onclick="setGlobalMode('home')" id="btnHome" aria-pressed="true">
+                            <span class="icon" aria-hidden="true">🏠</span> Home
                         </button>
-                        <button class="btn btn-mode btn-away" onclick="setGlobalMode('away')" id="btnAway">
-                            <span class="icon">🏖️</span> Away
+                        <button class="btn btn-mode btn-away" onclick="setGlobalMode('away')" id="btnAway" aria-pressed="false">
+                            <span class="icon" aria-hidden="true">🏖️</span> Away
                         </button>
-                        <button class="btn btn-mode btn-eco" onclick="setGlobalMode('eco')" id="btnEco">
-                            <span class="icon">🌿</span> Eco
+                        <button class="btn btn-mode btn-eco" onclick="setGlobalMode('eco')" id="btnEco" aria-pressed="false">
+                            <span class="icon" aria-hidden="true">🌿</span> Eco
                         </button>
-                        <button class="btn btn-mode btn-comfort" onclick="setGlobalMode('comfort')" id="btnComfort">
-                            <span class="icon">🔥</span> Comfort
+                        <button class="btn btn-mode btn-comfort" onclick="setGlobalMode('comfort')" id="btnComfort" aria-pressed="false">
+                            <span class="icon" aria-hidden="true">🔥</span> Comfort
                         </button>
                     </div>
                     <p class="global-help-text">
@@ -116,13 +118,14 @@
                         <h3>Add Device</h3>
                         <div class="form-group">
                             <label for="deviceSerial">Serial Number:</label>
-                            <input type="text" id="deviceSerial" placeholder="210 000 016 247" 
-                                   maxlength="15" oninput="formatSerialInput(this); detectDeviceModel()">
+                            <input type="text" id="deviceSerial" placeholder="210 000 016 247"
+                                   maxlength="15" autocomplete="off" inputmode="numeric"
+                                   oninput="formatSerialInput(this); detectDeviceModel()">
                             <span id="detectedModel" class="detected-model"></span>
                         </div>
                         <div class="form-group">
                             <label for="deviceName">Device Name:</label>
-                            <input type="text" id="deviceName" placeholder="e.g. Living Room Heater" maxlength="64">
+                            <input type="text" id="deviceName" placeholder="e.g. Living Room Heater" maxlength="64" autocomplete="off">
                         </div>
                         <div class="form-group">
                             <label for="deviceZone">Assign to Zone:</label>
@@ -220,11 +223,11 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="newZoneName">Zone Name:</label>
-                    <input type="text" id="newZoneName" placeholder="e.g. Office" maxlength="64">
+                    <input type="text" id="newZoneName" placeholder="e.g. Office" maxlength="64" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="newZoneIcon">Icon (emoji, optional):</label>
-                    <input type="text" id="newZoneIcon" placeholder="e.g. 🏠" maxlength="8">
+                    <input type="text" id="newZoneIcon" placeholder="e.g. 🏠" maxlength="8" autocomplete="off">
                 </div>
             </div>
             <div class="modal-footer">

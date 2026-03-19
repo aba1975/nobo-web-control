@@ -3256,3 +3256,596 @@ select:focus-visible {
     align-items: center;
     gap: 6px;
 }
+
+/* ============================================================
+   ENHANCED DESIGN SYSTEM — 2025 Update
+   Improvements: visual hierarchy, glassmorphism, mode colors,
+   dark mode, accessibility, micro-interactions, typography.
+   All existing class names, IDs and JS hooks preserved.
+   ============================================================ */
+
+/* ----- Refined CSS Variables ----- */
+:root {
+    /* Richer accent gradient */
+    --color-accent-gradient: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+
+    /* Elevated shadow scale */
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+    --shadow-card-focus: 0 0 0 3px var(--color-accent);
+
+    /* Mode gradient overlays */
+    --gradient-comfort: linear-gradient(145deg, rgba(231,76,60,0.10) 0%, transparent 60%);
+    --gradient-eco: linear-gradient(145deg, rgba(39,174,96,0.10) 0%, transparent 60%);
+    --gradient-away: linear-gradient(145deg, rgba(52,152,219,0.10) 0%, transparent 60%);
+    --gradient-off: linear-gradient(145deg, rgba(149,165,166,0.08) 0%, transparent 60%);
+}
+
+/* ----- Richer Dark Mode ----- */
+[data-theme="dark"] {
+    --color-background: #0d0f14;
+    --color-card-bg: #171a22;
+    --color-card-bg-glass: rgba(23, 26, 34, 0.82);
+    --color-detail-bg-glass: rgba(23, 26, 34, 0.88);
+    --color-modal-bg: rgba(23, 26, 34, 0.97);
+    --color-text-primary: #eceff4;
+    --color-text-secondary: #8892a4;
+    --color-border: #252933;
+    --color-glass-border: rgba(255, 255, 255, 0.05);
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.45);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.55);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.6);
+    --shadow-xl: 0 16px 56px rgba(0,0,0,0.65);
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.5);
+    --shadow-card-hover: 0 8px 28px rgba(0,0,0,0.65);
+    --gradient-comfort: linear-gradient(145deg, rgba(231,76,60,0.14) 0%, transparent 60%);
+    --gradient-eco: linear-gradient(145deg, rgba(39,174,96,0.14) 0%, transparent 60%);
+    --gradient-away: linear-gradient(145deg, rgba(52,152,219,0.14) 0%, transparent 60%);
+    --gradient-off: linear-gradient(145deg, rgba(149,165,166,0.10) 0%, transparent 60%);
+}
+
+/* ----- Smooth html scroll ----- */
+html {
+    scroll-behavior: smooth;
+}
+
+/* ----- Refined Header ----- */
+.header {
+    background: linear-gradient(160deg, #152233 0%, #1e2e42 40%, #2c3e50 100%);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Logo with subtle glow */
+.logo {
+    font-size: clamp(18px, 3.5vw, 26px);
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    text-shadow: 0 1px 12px rgba(255,255,255,0.15);
+}
+
+/* ----- Connection Status Badge ----- */
+.connection-status {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 20px;
+    padding: 5px 12px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    transition: background 0.2s ease;
+}
+
+.connection-status:hover {
+    background: rgba(255,255,255,0.11);
+}
+
+/* ----- Navigation Links (in header) ----- */
+.nav .nav-link {
+    border-radius: 8px 8px 0 0;
+    transition: background-color 0.2s ease, color 0.2s ease, border-bottom-color 0.2s ease;
+}
+
+.nav .nav-link.active {
+    border-bottom-color: #ff8c42;
+    background-color: rgba(255,140,66,0.10);
+    color: #ffb380;
+}
+
+.nav .nav-link:hover:not(.active) {
+    background-color: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.95);
+}
+
+/* ----- Section Headings — accent bar ----- */
+.global-controls h2,
+.zones-section h2,
+.devices-section h2,
+.log-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    margin-bottom: 20px;
+}
+
+.global-controls h2::before,
+.zones-section h2::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 14px;
+    background: var(--color-accent);
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* ----- Global Mode Buttons ----- */
+.btn-mode {
+    min-height: 52px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.2px;
+    border-radius: 10px;
+}
+
+.btn-mode .icon {
+    font-size: 20px;
+}
+
+/* ----- Global Help Text as info card ----- */
+.global-help-text {
+    background: var(--color-card-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--color-text-secondary);
+    margin-top: 14px;
+    box-shadow: var(--shadow-card);
+}
+
+/* ----- Zone List Item: Mode-based gradient card ----- */
+/* Using CSS :has() for zero-JS parent styling based on inner mode badge */
+.zone-list-item {
+    box-shadow: var(--shadow-card);
+    border-radius: 14px;
+    transition: transform 0.22s cubic-bezier(0.4,0,0.2,1),
+                box-shadow 0.22s cubic-bezier(0.4,0,0.2,1),
+                background-color 0.3s ease;
+    border: 1px solid var(--color-glass-border);
+    border-left-width: 3px;
+    border-left-color: transparent;
+}
+
+.zone-list-item:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-card-hover);
+}
+
+/* Comfort mode card */
+.zone-list-item:has(.zone-list-mode.mode-comfort) {
+    background: var(--gradient-comfort), var(--color-card-bg-glass);
+    border-left-color: var(--color-comfort);
+}
+
+/* Eco mode card */
+.zone-list-item:has(.zone-list-mode.mode-eco) {
+    background: var(--gradient-eco), var(--color-card-bg-glass);
+    border-left-color: var(--color-eco);
+}
+
+/* Away mode card */
+.zone-list-item:has(.zone-list-mode.mode-away) {
+    background: var(--gradient-away), var(--color-card-bg-glass);
+    border-left-color: var(--color-away);
+}
+
+/* ----- Zone List Temperature: colored by mode ----- */
+.zone-list-temp {
+    font-size: clamp(1.35rem, 4vw, 1.7rem);
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    transition: color 0.3s ease;
+}
+
+.zone-list-item:has(.zone-list-mode.mode-comfort) .zone-list-temp {
+    color: var(--color-comfort);
+}
+
+.zone-list-item:has(.zone-list-mode.mode-eco) .zone-list-temp {
+    color: var(--color-eco);
+}
+
+.zone-list-item:has(.zone-list-mode.mode-away) .zone-list-temp {
+    color: var(--color-away);
+}
+
+/* ----- Zone List Mode Badge: uppercase ----- */
+.zone-list-mode {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+}
+
+/* ----- Zone List Name: stronger weight ----- */
+.zone-list-name {
+    font-weight: 700;
+    letter-spacing: -0.1px;
+}
+
+/* ----- Zone Detail Temperature: larger and bolder ----- */
+.detail-currently {
+    font-size: clamp(2.8rem, 10vw, 4.5rem);
+    font-weight: 900;
+    letter-spacing: -2px;
+    line-height: 1;
+}
+
+/* ----- Zone Detail back button improvement ----- */
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: var(--color-card-bg);
+    border: 1px solid var(--color-border);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+    color: var(--color-text-primary);
+}
+
+.back-btn:hover {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+    box-shadow: var(--shadow-md);
+}
+
+/* ----- Detail section headings ----- */
+.detail-section h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    margin-bottom: 16px;
+    opacity: 1;
+}
+
+.detail-section h3::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 12px;
+    background: var(--color-accent);
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* ----- Temperature controls: cleaner ----- */
+.temp-control {
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+}
+
+.temp-btn {
+    border-radius: 50%;
+    border: 2px solid var(--color-primary);
+    transition: background-color 0.18s ease, transform 0.18s ease, border-color 0.18s ease;
+}
+
+/* ----- Override buttons: pill style ----- */
+.override-btn {
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    transition: background-color 0.2s ease, transform 0.15s ease,
+                box-shadow 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.override-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* ----- Device Section: card wrappers ----- */
+.device-add-form,
+.devices-list {
+    background: var(--color-card-bg);
+    border-radius: var(--border-radius);
+    padding: 24px;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--color-border);
+    margin-bottom: 24px;
+}
+
+.device-add-form h3,
+.devices-list h3 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
+    letter-spacing: -0.1px;
+}
+
+/* ----- Device Item hover ----- */
+.device-item {
+    border-radius: 10px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.device-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* ----- Component items ----- */
+.component-item {
+    border-radius: 10px;
+    border: 1px solid var(--color-border);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.component-item:hover {
+    background-color: var(--color-card-bg);
+    box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .component-item:hover {
+    background-color: rgba(255,255,255,0.03);
+}
+
+/* ----- Schedule Timeline improvements ----- */
+.day-timeline {
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+}
+
+.schedule-days .timeline-block:hover {
+    filter: brightness(1.2);
+    z-index: 1;
+}
+
+.schedule-days .timeline-block.editing {
+    outline: 3px solid rgba(255,255,255,0.8);
+    outline-offset: -3px;
+    z-index: 2;
+}
+
+/* ----- Schedule Day header name ----- */
+.day-name {
+    font-weight: 700;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+}
+
+/* ----- Log Page ----- */
+.log-section {
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.log-section h2 {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 20px;
+    text-transform: none;
+    letter-spacing: -0.3px;
+}
+
+/* Remove accent bar from log h2 since it has a different style */
+.log-section h2::before {
+    display: none;
+}
+
+.log-entry {
+    border-radius: 6px;
+    transition: background-color 0.15s ease;
+}
+
+/* ----- Modal improvements ----- */
+.modal-content {
+    border-radius: 20px;
+}
+
+.modal-header h2 {
+    font-size: 18px;
+    font-weight: 700;
+}
+
+/* ----- Modal footer buttons ----- */
+.modal-footer {
+    gap: 10px;
+}
+
+/* ----- Form Inputs: tighter focus ring ----- */
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(255,107,53,0.15);
+}
+
+/* ----- Toast improvements ----- */
+.toast {
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+[data-theme="dark"] .toast {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* ----- Footer ----- */
+.footer {
+    background: var(--color-card-bg);
+    border-top: 1px solid var(--color-border);
+    padding: 16px 0;
+}
+
+.hub-info,
+.last-updated {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    letter-spacing: 0.1px;
+}
+
+/* ----- Zone List footer ----- */
+.zone-list-footer {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+}
+
+/* ----- Skeleton shimmer improvement (dark mode) ----- */
+[data-theme="dark"] .skeleton-dot,
+[data-theme="dark"] .skeleton-text,
+[data-theme="dark"] .skeleton-temp,
+[data-theme="dark"] .skeleton-mode {
+    background: linear-gradient(90deg, #1c1f26 25%, #252a35 50%, #1c1f26 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+}
+
+/* ----- Btn improvements ----- */
+.btn {
+    border-radius: 10px;
+    font-weight: 600;
+    transition: transform 0.18s ease, box-shadow 0.18s ease,
+                background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+/* ----- Better active/hover for primary btn ----- */
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.btn-primary:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* ----- Block-edit form (schedule) ----- */
+.block-edit-form {
+    border-radius: 12px;
+    border-left-width: 4px;
+}
+
+/* ----- Copy-day popover ----- */
+.copy-day-popover {
+    border-radius: 12px;
+}
+
+/* ----- Scrollbar styling (webkit) ----- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-secondary);
+}
+
+/* ----- High contrast mode support ----- */
+@media (forced-colors: active) {
+    .zone-list-item,
+    .btn,
+    .nav-link,
+    .modal-content {
+        forced-color-adjust: none;
+    }
+}
+
+/* ----- Prefers-reduced-motion: additional rules ----- */
+@media (prefers-reduced-motion: reduce) {
+    .zone-list-item:hover,
+    .device-item:hover,
+    .component-item:hover,
+    .back-btn:hover {
+        transform: none;
+    }
+}
+
+/* ----- Print styles ----- */
+@media print {
+    .header,
+    .footer,
+    .toast-container,
+    .modal,
+    .zone-list-footer,
+    .override-section,
+    .global-controls {
+        display: none !important;
+    }
+
+    body {
+        background: white;
+        color: black;
+    }
+
+    .zone-list-item {
+        break-inside: avoid;
+        border: 1px solid #ccc;
+        box-shadow: none;
+    }
+}
+
+/* ----- Tablet layout improvement ----- */
+@media (min-width: 641px) and (max-width: 768px) {
+    .global-buttons {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ----- Small screens: improve global mode buttons ----- */
+@media (max-width: 640px) {
+    .global-buttons {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+
+    .btn-mode {
+        min-width: unset;
+        width: 100%;
+    }
+}
+
+/* ----- Hide detected-model badge when empty ----- */
+.detected-model:empty {
+    display: none;
+}
