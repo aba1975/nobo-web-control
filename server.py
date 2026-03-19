@@ -418,31 +418,35 @@ def get_current_schedule_mode(zone_id: str) -> str:
     day_schedule = None
 
     if DEMO_MODE:
-        # Use the same sample schedule that get_zone_schedule() returns
-        sample_schedule = {
-            'monday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-            'tuesday':   [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-            'wednesday': [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-            'thursday':  [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-            'friday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-            'saturday':  [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
-                          {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
-                          {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
-            'sunday':    [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
-                          {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
-                          {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
-        }
-        day_schedule = sample_schedule.get(current_day)
+        # Check for user-saved schedule first
+        if zone_id in demo_schedules:
+            day_schedule = demo_schedules[zone_id].get(current_day)
+        else:
+            # Fall back to default sample schedule
+            sample_schedule = {
+                'monday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+                'tuesday':   [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+                'wednesday': [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+                'thursday':  [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+                'friday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+                'saturday':  [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                              {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                              {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+                'sunday':    [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                              {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                              {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+            }
+            day_schedule = sample_schedule.get(current_day)
     elif hub:
         try:
             zone = hub.zones.get(zone_id)
