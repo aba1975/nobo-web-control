@@ -1,9 +1,6 @@
 name: Close stale PRs
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -28,7 +25,9 @@ jobs:
             state=$(gh pr view "$pr" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
             echo "  State: $state"
 
-            if [ "$state" = "OPEN" ]; then
+            if [ "$state" = "UNKNOWN" ]; then
+              echo "  WARNING: PR #$pr not found or inaccessible, skipping"
+            elif [ "$state" = "OPEN" ]; then
               # Add comment
               gh pr comment "$pr" --repo "$REPO" --body "$COMMENT"
               echo "  Comment added"
