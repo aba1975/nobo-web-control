@@ -391,6 +391,77 @@ async def broadcast_zone_update():
         logger.error(f"Error broadcasting zone update: {e}")
 
 
+def get_current_schedule_mode(zone_id: str) -> str:
+    """Determine which schedule mode is currently active for a zone.
+
+    Checks the current day of the week and time against the zone's week
+    profile to find the active schedule block.  Falls back to 'comfort'
+    when no matching block is found.
+    """
+    def _time_to_minutes(t: str) -> int:
+        """Convert HH:MM time string to minutes since midnight. '24:00' → 1440."""
+        try:
+            h, m = t.split(':')
+            return int(h) * 60 + int(m)
+        except (ValueError, AttributeError):
+            return 0
+
+    now = datetime.now()
+    day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    current_day = day_names[now.weekday()]
+    current_minutes = now.hour * 60 + now.minute
+
+    # Build a day schedule regardless of demo / real-hub mode
+    day_schedule = None
+
+    if DEMO_MODE:
+        # Use the same sample schedule that get_zone_schedule() returns
+        sample_schedule = {
+            'monday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+            'tuesday':   [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+            'wednesday': [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+            'thursday':  [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+            'friday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                          {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                          {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+            'saturday':  [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                          {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                          {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+            'sunday':    [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                          {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                          {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+        }
+        day_schedule = sample_schedule.get(current_day)
+    elif hub:
+        try:
+            zone = hub.zones.get(zone_id)
+            if zone:
+                week_profile_id = zone.get('week_profile_id')
+                if week_profile_id and week_profile_id in hub.week_profiles:
+                    week_profile = hub.week_profiles[week_profile_id]
+                    # week_profile may already be structured as {day: [blocks]}
+                    day_schedule = week_profile.get(current_day)
+        except Exception as e:
+            logger.error(f"Error reading week profile for zone {zone_id}: {e}")
+
+    if day_schedule:
+        for block in day_schedule:
+            start_min = _time_to_minutes(block.get('start', '00:00'))
+            end_min = _time_to_minutes(block.get('end', '24:00'))
+            if start_min <= current_minutes < end_min:
+                return block.get('mode', 'comfort')
+
+    return 'comfort'
+
+
 def get_zones_data() -> List[Dict[str, Any]]:
     """Get current data for all zones"""
     with connection_lock:
@@ -438,6 +509,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'eco_temperature': demo_zone['eco_temp'],
                 'away_temperature': AWAY_TEMPERATURE,
                 'current_mode': demo_zone['mode'],
+                'schedule_mode': get_current_schedule_mode(demo_zone['zone_id']) if demo_zone['mode'] == 'normal' else None,
                 'active_override_id': demo_zone.get('override_id'),
                 'device_type': device_name,
                 'supports_comfort': any_supports_temp,
@@ -509,6 +581,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'eco_temperature': eco_temp,
                 'away_temperature': AWAY_TEMPERATURE,
                 'current_mode': mode,
+                'schedule_mode': get_current_schedule_mode(str(zone_id)) if mode == 'normal' else None,
                 'active_override_id': zone.get('active_override_id'),
                 'device_type': device_name,
                 'supports_comfort': any_supports_temp,
