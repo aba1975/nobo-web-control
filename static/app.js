@@ -1237,6 +1237,7 @@ function copyDay(day) {
 function closeCopyDayPopover() {
     if (copyDayPopoverDay !== null) {
         copyDayPopoverDay = null;
+        renderSchedule();
     }
 }
 

@@ -161,6 +161,9 @@ log_lock = threading.Lock()  # Lock for thread-safe command log access
 # Command log buffer — keeps the last 500 entries
 command_log: deque = deque(maxlen=500)
 
+# In-memory store for demo-mode schedule changes (keyed by zone_id)
+demo_schedules: Dict[str, dict] = {}
+
 
 def add_log_entry(direction: str, description: str, command: str = "", source: str = "api"):
     """Add an entry to the command log buffer (thread-safe)."""
@@ -1124,6 +1127,14 @@ async def get_zone_schedule(zone_id: str):
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
+            # Return previously saved schedule if available, otherwise fall back to sample
+            if zone_id in demo_schedules:
+                return {
+                    "zone_id": zone_id,
+                    "zone_name": demo_zone['name'],
+                    "schedule": demo_schedules[zone_id]
+                }
+
             # Sample schedule: Eco 00:00-07:00, Comfort 07:00-22:00, Eco 22:00-24:00
             sample_schedule = {
                 "zone_id": zone_id,
@@ -1207,12 +1218,15 @@ async def update_zone_schedule(zone_id: str, schedule: dict):
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
-        # Demo mode - just validate and return success
+        # Demo mode - store schedule and return success
         if DEMO_MODE:
             demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
+            # The request body is {"schedule": {"monday": [...], ...}}; extract the inner dict
+            incoming_schedule = schedule.get('schedule', schedule)
+            demo_schedules[zone_id] = incoming_schedule
             logger.info(f"Demo mode: Schedule updated for zone {zone_id}")
             return {"status": "success", "zone_id": zone_id, "message": "Schedule updated (demo mode)"}
         
