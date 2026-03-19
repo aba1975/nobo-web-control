@@ -21,41 +21,42 @@ const SCHEDULE_DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frida
 
 // Maps serial prefix → { name, image } where image is the slug for /static/images/{slug}.png
 const DEVICE_MODELS = {
-    '000': { name: 'NTB-2R',                  image: 'ntb-2r' },
-    '120': { name: 'RS 700',                   image: 'rs-700' },
-    '121': { name: 'RSX 700',                  image: 'rsx-700' },
-    '130': { name: 'RCE 700',                  image: 'rce-700' },
-    '160': { name: 'R80 RDC 700',              image: 'r80-rdc-700' },
-    '165': { name: 'R80 RDC 700 LST (GB)',     image: 'r80-rdc-700' },
-    '168': { name: 'NCU-2R',                   image: 'ncu-2r' },
-    '169': { name: 'DCU-2R',                   image: 'dcu-2r' },
-    '170': { name: 'Serie 18, ewt touch',      image: 'serie-18' },
-    '180': { name: '2NC9 700',                 image: '2nc9-700' },
-    '182': { name: 'R80 RSC 700',              image: 'r80-rsc-700' },
-    '183': { name: 'R80 RSC 700',              image: 'r80-rsc-700' },
-    '184': { name: 'NCU-1R',                   image: 'ncu-1r' },
-    '186': { name: 'DCU-1R',                   image: 'dcu-1r' },
-    '190': { name: 'Safir',                    image: 'safir' },
-    '192': { name: 'R80 TXF 700',              image: 'r80-txf-700' },
-    '194': { name: 'R80 RXC 700',              image: 'r80-rxc-700' },
-    '198': { name: 'NCU-ER',                   image: 'ncu-er' },
-    '199': { name: 'DCU-ER',                   image: 'dcu-er' },
-    '200': { name: 'TRB 36 700',               image: 'trb-36-700' },
-    '210': { name: 'NTB-2R',                   image: 'ntb-2r' },
-    '220': { name: 'TR36',                     image: 'tr36' },
-    '230': { name: 'TCU 700',                  image: 'tcu-700' },
-    '231': { name: 'THB 700',                  image: 'thb-700' },
-    '232': { name: 'TXB 700',                  image: 'txb-700' },
-    '234': { name: 'SW4',                      image: 'sw4' },
+    '000': { name: 'NTB-2R',                  image: 'NTB-2R' },
+    '120': { name: 'RS 700',                   image: 'RS-700' },
+    '121': { name: 'RSX 700',                  image: 'RSX-700' },
+    '130': { name: 'RCE 700',                  image: 'RCE-700' },
+    '160': { name: 'R80 RDC 700',              image: 'R80-RDC-700' },
+    '165': { name: 'R80 RDC 700 LST (GB)',     image: 'R80-RDC-700' },
+    '168': { name: 'NCU-2R',                   image: 'NCU-2R' },
+    '169': { name: 'DCU-2R',                   image: 'DCU-2R' },
+    '170': { name: 'Serie 18, ewt touch',      image: 'SERIE-18' },
+    '180': { name: '2NC9 700',                 image: '2NC9-700' },
+    '182': { name: 'R80 RSC 700',              image: 'R80-RSC-700' },
+    '183': { name: 'R80 RSC 700',              image: 'R80-RSC-700' },
+    '184': { name: 'NCU-1R',                   image: 'NCU-1R' },
+    '186': { name: 'DCU-1R',                   image: 'DCU-1R' },
+    '190': { name: 'Safir',                    image: 'SAFIR' },
+    '192': { name: 'R80 TXF 700',              image: 'R80-TXF-700' },
+    '194': { name: 'R80 RXC 700',              image: 'R80-RXC-700' },
+    '198': { name: 'NCU-ER',                   image: 'NCU-ER' },
+    '199': { name: 'DCU-ER',                   image: 'DCU-ER' },
+    '200': { name: 'TRB 36 700',               image: 'TRB-36-700' },
+    '210': { name: 'NTB-2R',                   image: 'NTB-2R' },
+    '220': { name: 'TR36',                     image: 'TR36' },
+    '230': { name: 'TCU 700',                  image: 'TCU-700' },
+    '231': { name: 'THB 700',                  image: 'THB-700' },
+    '232': { name: 'TXB 700',                  image: 'TXB-700' },
+    '234': { name: 'SW4',                      image: 'SW4' },
 };
 
 function deviceImageTag(serial, altText, cssClass) {
     const prefix = String(serial).replace(/\s/g, '').slice(0, 3);
     const model = DEVICE_MODELS[prefix];
     const slug = model ? model.image : 'placeholder';
+    const slugLower = slug.toLowerCase();
     const cls = cssClass ? ` class="${cssClass}"` : '';
     const alt = altText || (model ? model.name : 'Device');
-    return `<img src="/static/images/${slug}.png" alt="${escapeHtml(alt)}"${cls} onerror="this.onerror=null;this.src='/static/images/${slug}.svg';this.onerror=function(){this.src='/static/images/placeholder.svg';};">`;
+    return `<img src="/static/images/${slug}.png" alt="${escapeHtml(alt)}"${cls} onerror="this.onerror=null;this.src='/static/images/${slugLower}.svg';this.onerror=function(){this.src='/static/images/placeholder.svg';};">`;
 }
 
 // ===== Initialization =====
