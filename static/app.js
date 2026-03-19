@@ -1589,17 +1589,19 @@ async function replaceDevice(serial, zoneId) {
     const newSerial = prompt('Enter new device serial number (12 digits):');
     if (!newSerial) return;
     
-    const cleanSerial = newSerial.replace(/\s/g, '');
-    if (cleanSerial.length !== 12) {
+    const cleanNewSerial = newSerial.replace(/\s/g, '');
+    if (cleanNewSerial.length !== 12) {
         showToast('Serial number must be 12 digits', 'warning');
         return;
     }
     
+    const cleanSerial = serial.replace(/\s/g, '');
+    
     try {
-        const response = await fetch(`/api/devices/${serial}`, {
+        const response = await fetch(`/api/devices/${cleanSerial}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ new_serial: cleanSerial })
+            body: JSON.stringify({ new_serial: cleanNewSerial })
         });
         
         if (!response.ok) {
@@ -1607,9 +1609,12 @@ async function replaceDevice(serial, zoneId) {
             throw new Error(error.detail || 'Failed to replace device');
         }
         
-        // Refresh zones and devices list
         await fetchZones();
-        renderDevicesList();
+        if (currentPage === 'zoneDetail' && currentZoneDetail) {
+            renderZoneDetail(currentZoneDetail);
+        } else {
+            renderDevicesList();
+        }
         
         showToast('Device replaced successfully', 'success');
     } catch (error) {
@@ -1623,8 +1628,10 @@ async function removeDevice(serial, zoneId) {
         return;
     }
     
+    const cleanSerial = serial.replace(/\s/g, '');
+    
     try {
-        const response = await fetch(`/api/devices/${serial}`, {
+        const response = await fetch(`/api/devices/${cleanSerial}`, {
             method: 'DELETE'
         });
         
@@ -1633,9 +1640,12 @@ async function removeDevice(serial, zoneId) {
             throw new Error(error.detail || 'Failed to remove device');
         }
         
-        // Refresh zones and devices list
         await fetchZones();
-        renderDevicesList();
+        if (currentPage === 'zoneDetail' && currentZoneDetail) {
+            renderZoneDetail(currentZoneDetail);
+        } else {
+            renderDevicesList();
+        }
         
         showToast('Device removed successfully', 'success');
     } catch (error) {
