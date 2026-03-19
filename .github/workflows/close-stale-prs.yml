@@ -3,7 +3,8 @@ name: Close stale PRs
 on:
   push:
     branches:
-      - copilot/close-stale-pull-requests
+      - main
+  workflow_dispatch:
 
 permissions:
   pull-requests: write
