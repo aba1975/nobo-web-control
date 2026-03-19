@@ -488,8 +488,18 @@ function createZoneListItem(zone) {
         dotColor = '#95A5A6';
         modeLabel = 'Off';
     } else {
-        // 'normal' — following schedule
-        modeLabel = 'Schedule';
+        // 'normal' — following schedule; reflect active schedule block in label
+        const schedMode = zone.schedule_mode || 'comfort';
+        if (schedMode === 'eco') {
+            modeLabel = 'Schedule · Eco';
+            modeCssClass = 'mode-eco';
+        } else if (schedMode === 'away') {
+            modeLabel = 'Schedule · Away';
+            modeCssClass = 'mode-away';
+        } else {
+            modeLabel = 'Schedule · Comfort';
+            modeCssClass = 'mode-comfort';
+        }
     }
     
     // Subtitle for grouped zones
@@ -509,8 +519,15 @@ function createZoneListItem(zone) {
         } else if (mode === 'away') {
             tempVal = zone.away_temperature;
         } else {
-            // 'normal' (schedule) or 'off' — show comfort as default target
-            tempVal = zone.comfort_temperature;
+            // 'normal' — use the active schedule block's target temperature
+            const schedMode = zone.schedule_mode || 'comfort';
+            if (schedMode === 'eco') {
+                tempVal = zone.eco_temperature;
+            } else if (schedMode === 'away') {
+                tempVal = zone.away_temperature;
+            } else {
+                tempVal = zone.comfort_temperature;
+            }
         }
         if (tempVal != null) {
             setTemp = '🎯 ' + tempVal.toFixed(1) + '°C';
@@ -673,6 +690,10 @@ function renderZoneDetail(zoneId) {
                     </div>
                     <span class="component-type-badge ${typeBadgeClass}">${componentType}</span>
                     <span class="component-serial">${displaySerial}</span>
+                    <div class="device-actions">
+                        <button class="btn btn-sm" onclick="replaceDevice('${serial}', '${zone.zone_id}')">Replace</button>
+                        <button class="btn btn-sm btn-danger" onclick="removeDevice('${serial}', '${zone.zone_id}')">Remove</button>
+                    </div>
                 </div>
             </div>
         `;
