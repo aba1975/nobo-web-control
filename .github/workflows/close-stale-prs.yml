@@ -1,0 +1,43 @@
+name: Close stale PRs
+
+on:
+  push:
+    branches:
+      - copilot/close-stale-pull-requests
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  close-stale-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close stale pull requests with comments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          COMMENT="Closing this PR — all changes from this branch have already been merged into \`main\` through the consolidation PRs #21, #22, #23, and #24. Thank you for the contribution!"
+
+          for pr in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 16 19 20; do
+            echo "Processing PR #$pr..."
+
+            # Check if PR is still open
+            state=$(gh pr view "$pr" --repo "$REPO" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")
+            echo "  State: $state"
+
+            if [ "$state" = "OPEN" ]; then
+              # Add comment
+              gh pr comment "$pr" --repo "$REPO" --body "$COMMENT"
+              echo "  Comment added"
+
+              # Close PR
+              gh pr close "$pr" --repo "$REPO"
+              echo "  PR closed"
+            else
+              echo "  PR #$pr is already $state, skipping"
+            fi
+          done
+
+          echo "All done!"
