@@ -13,8 +13,35 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 - 🏠 **Global Controls** - Quick Home and Away modes for all zones
 
 ### Device Support
-- **NTB-2R** (Thermostat with floor sensor) - Full remote control including temperature adjustment
-- **R80 RDC 700** (Panel heater receiver) - Mode control (temperatures adjusted manually on device)
+
+The system supports **23 unique device models** across 26 serial number prefixes, automatically detected from the first 3 digits of each device's serial number.
+
+| Serial Prefix(es) | Device Model | Notes |
+|---|---|---|
+| `000`, `210` | NTB-2R | Thermostat with floor sensor — full remote control including temperature adjustment |
+| `120` | RS 700 | Panel heater receiver |
+| `121` | RSX 700 | Panel heater receiver |
+| `130` | RCE 700 | Panel heater receiver |
+| `160`, `165` | R80 RDC 700 | Panel heater receiver — `165` is the UK/GB variant (LST) |
+| `168` | NCU-2R | |
+| `169` | DCU-2R | |
+| `170` | Serie 18, ewt touch | |
+| `180` | 2NC9 700 | |
+| `182`, `183` | R80 RSC 700 | |
+| `184` | NCU-1R | |
+| `186` | DCU-1R | |
+| `190` | Safir | |
+| `192` | R80 TXF 700 | |
+| `194` | R80 RXC 700 | |
+| `198` | NCU-ER | |
+| `199` | DCU-ER | |
+| `200` | TRB 36 700 | |
+| `220` | TR36 | |
+| `230` | TCU 700 | |
+| `231` | THB 700 | |
+| `232` | TXB 700 | |
+| `234` | SW4 | |
+
 - 🎨 **Auto-Detection** - Device types automatically detected from serial number prefix
 - 🔍 **Device-Aware UI** - Controls automatically adjust based on device capabilities
 
