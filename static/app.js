@@ -485,9 +485,6 @@ function createZoneListItem(zone) {
         dotColor = '#3498DB';
         modeLabel = 'Away';
         modeCssClass = 'mode-away';
-    } else if (mode === 'off') {
-        dotColor = '#95A5A6';
-        modeLabel = 'Off';
     } else {
         // 'normal' — following schedule; reflect active schedule block in label
         const schedMode = zone.schedule_mode || 'comfort';
@@ -791,7 +788,6 @@ function getModeLabel(mode) {
         'comfort': 'Comfort',
         'eco': 'Eco',
         'away': 'Away',
-        'off': 'Off',
         'normal': 'Schedule'
     };
     return labels[mode] || 'Unknown';
@@ -1337,7 +1333,6 @@ function renderDevicesList() {
                 const modeBadgeClass = mode === 'comfort' ? 'mode-badge-comfort'
                     : mode === 'eco' ? 'mode-badge-eco'
                     : mode === 'away' ? 'mode-badge-away'
-                    : mode === 'off' ? 'mode-badge-off'
                     : 'mode-badge-normal';
                 const modeLabel = getModeLabel(mode);
                 const tempLabel = supportsTemp ? 'Remote adjust ✅' : 'Manual only 🔧';

@@ -453,7 +453,18 @@ def get_current_schedule_mode(zone_id: str) -> str:
             if zone:
                 week_profile_id = zone.get('week_profile_id')
                 if week_profile_id and week_profile_id in hub.week_profiles:
-                    return hub.get_week_profile_status(week_profile_id)
+                    status = hub.get_week_profile_status(week_profile_id)
+                    # get_week_profile_status() may return a pynobo API integer
+                    # constant instead of a string — map it back to the string
+                    # values used throughout the rest of the application.
+                    if isinstance(status, str) and status in ('comfort', 'eco', 'away'):
+                        return status
+                    mode_reverse_map = {
+                        pynobo.nobo.API.OVERRIDE_MODE_COMFORT: 'comfort',
+                        pynobo.nobo.API.OVERRIDE_MODE_ECO: 'eco',
+                        pynobo.nobo.API.OVERRIDE_MODE_AWAY: 'away',
+                    }
+                    return mode_reverse_map.get(status, 'comfort')
         except Exception as e:
             logger.error(f"Error reading week profile for zone {zone_id}: {e}")
         return 'comfort'
