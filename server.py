@@ -154,6 +154,7 @@ hub: Optional[pynobo.nobo] = None
 connected_websockets: List[WebSocket] = []
 hub_connected = False
 hub_thread: Optional[threading.Thread] = None
+main_event_loop: Optional[asyncio.AbstractEventLoop] = None
 websocket_lock = asyncio.Lock()  # Lock for thread-safe websocket list access
 connection_lock = threading.Lock()  # Lock for thread-safe hub_connected access
 log_lock = threading.Lock()  # Lock for thread-safe command log access
@@ -244,8 +245,10 @@ def parse_serial_input(serial: str) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
+    global main_event_loop
     # Startup
     logger.info("Starting Nobø Web Control Server...")
+    main_event_loop = asyncio.get_running_loop()
     try:
         await connect_to_hub()
     except Exception as e:
@@ -351,12 +354,10 @@ def hub_update_callback(hub_instance):
     add_log_entry("received", "Hub data update received", source="hub")
     
     # Schedule the broadcast in the main event loop
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.run_coroutine_threadsafe(broadcast_zone_update(), loop)
-    except Exception as e:
-        logger.error(f"Error scheduling broadcast: {e}")
+    if main_event_loop is not None and main_event_loop.is_running():
+        asyncio.run_coroutine_threadsafe(broadcast_zone_update(), main_event_loop)
+    else:
+        logger.warning("Cannot broadcast zone update: main event loop not available")
 
 
 async def broadcast_zone_update():
@@ -575,8 +576,8 @@ def get_zones_data() -> List[Dict[str, Any]]:
             components_display = [format_serial_display(c) for c in zone_components]
             
             # Get current temperature
-            current_temp = zone.get('temp', 0.0)
-            if current_temp:
+            current_temp = zone.get('temp')
+            if current_temp is not None:
                 current_temp = float(current_temp) / 100.0  # pynobo stores temps in centidegrees
             
             # Get comfort and eco temperatures
@@ -620,7 +621,13 @@ def determine_zone_mode(zone_id: str, zone: Dict) -> str:
     Uses pynobo's built-in helper which correctly handles both zone-specific
     and global overrides, and returns 'normal' when no override is active.
     """
-    return hub.get_zone_override_mode(zone_id)
+    if hub is None:
+        return 'normal'
+    try:
+        return hub.get_zone_override_mode(zone_id)
+    except Exception as e:
+        logger.error(f"Error determining zone mode for {zone_id}: {e}")
+        return 'normal'
 
 
 # ===== API Endpoints =====
