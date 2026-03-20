@@ -364,7 +364,9 @@ async def broadcast_zone_update():
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
+        return
+    if not DEMO_MODE and not hub:
         return
     
     try:
@@ -1639,7 +1641,7 @@ async def websocket_endpoint(websocket: WebSocket):
         with connection_lock:
             connected = hub_connected
         
-        if connected and hub:
+        if connected and (hub or DEMO_MODE):
             zones_data = get_zones_data()
             await websocket.send_json({
                 "type": "zones_update",
