@@ -236,6 +236,29 @@
         </div>
     </div>
 
+    <!-- Move Device Modal -->
+    <div id="moveDeviceModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>Move Device</h2>
+                <button class="modal-close" onclick="closeMoveDeviceModal()" aria-label="Close move device modal">✕</button>
+            </div>
+            <div class="modal-body">
+                <p id="moveDeviceInfo"></p>
+                <div class="form-group">
+                    <label for="moveDeviceZone">Move to Zone:</label>
+                    <select id="moveDeviceZone">
+                        <option value="">Select zone...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeMoveDeviceModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="confirmMoveDevice()">Move</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
 </body>
 </html>

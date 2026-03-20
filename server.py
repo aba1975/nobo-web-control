@@ -1318,7 +1318,15 @@ async def add_device(device: DeviceAdd):
             demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == device.zone_id), None)
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
-            
+
+            # Global duplicate check across all zones
+            for z in DEMO_ZONES:
+                if serial in z['components']:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Device with serial {serial} is already registered in zone '{z['name']}'"
+                    )
+
             if serial in demo_zone['components']:
                 raise HTTPException(status_code=400, detail="Device already registered in this zone")
             
@@ -1422,6 +1430,19 @@ async def replace_device(serial: str, replacement: DeviceReplace):
         
         # Demo mode - replace in DEMO_ZONES
         if DEMO_MODE:
+            # Find the source zone for old_serial
+            src_zone = next((z for z in DEMO_ZONES if old_serial in z['components']), None)
+            if not src_zone:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Check new serial doesn't already exist in any other zone
+            for z in DEMO_ZONES:
+                if new_serial in z['components'] and z['zone_id'] != src_zone['zone_id']:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Device with serial {new_serial} is already registered in zone '{z['name']}'"
+                    )
+
             found = False
             for demo_zone in DEMO_ZONES:
                 if old_serial in demo_zone['components']:
@@ -1496,6 +1517,78 @@ async def remove_device(serial: str):
         raise
     except Exception as e:
         logger.error(f"Error removing device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeviceMove(BaseModel):
+    new_zone_id: str
+
+
+@app.post("/api/devices/{serial}/move")
+async def move_device(serial: str, move: DeviceMove):
+    """Move a device from its current zone to a different zone"""
+    with connection_lock:
+        connected = hub_connected
+
+    if not connected:
+        raise HTTPException(status_code=503, detail="Hub not connected")
+
+    try:
+        serial_clean = parse_serial_input(serial)
+
+        # Demo mode - move between DEMO_ZONES
+        if DEMO_MODE:
+            # Find source zone
+            src_zone = None
+            for z in DEMO_ZONES:
+                if serial_clean in z['components']:
+                    src_zone = z
+                    break
+
+            if not src_zone:
+                raise HTTPException(status_code=404, detail="Device not found")
+
+            # Validate target zone
+            dst_zone = next((z for z in DEMO_ZONES if z['zone_id'] == move.new_zone_id), None)
+            if not dst_zone:
+                raise HTTPException(status_code=404, detail="Target zone not found")
+
+            if src_zone['zone_id'] == dst_zone['zone_id']:
+                raise HTTPException(status_code=400, detail="Device is already in the target zone")
+
+            # Remove from source zone (preserve component name)
+            idx = src_zone['components'].index(serial_clean)
+            src_zone['components'].pop(idx)
+            component_name = ''
+            if 'component_names' in src_zone and idx < len(src_zone['component_names']):
+                component_name = src_zone['component_names'].pop(idx)
+
+            # Add to destination zone
+            dst_zone['components'].append(serial_clean)
+            if 'component_names' not in dst_zone:
+                dst_zone['component_names'] = [''] * (len(dst_zone['components']) - 1)
+            dst_zone['component_names'].append(component_name)
+
+            logger.info(
+                f"Demo mode: Device {serial_clean} moved from zone {src_zone['zone_id']} "
+                f"to zone {dst_zone['zone_id']}"
+            )
+            return {
+                "status": "success",
+                "serial": serial_clean,
+                "old_zone_id": src_zone['zone_id'],
+                "old_zone_name": src_zone['name'],
+                "new_zone_id": dst_zone['zone_id'],
+                "new_zone_name": dst_zone['name'],
+            }
+
+        # Real hub mode
+        raise HTTPException(status_code=501, detail="Move device not yet implemented for real hub")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error moving device: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
