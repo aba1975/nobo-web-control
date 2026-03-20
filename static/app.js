@@ -693,6 +693,7 @@ function renderZoneDetail(zoneId) {
                     <span class="component-serial">${displaySerial}</span>
                     <div class="device-actions">
                         <button class="btn btn-sm" onclick="replaceDevice('${serial}', '${zone.zone_id}')">Replace</button>
+                        <button class="btn btn-sm" onclick="moveDevice('${serial}', '${zone.zone_id}')">Move</button>
                         <button class="btn btn-sm btn-danger" onclick="removeDevice('${serial}', '${zone.zone_id}')">Remove</button>
                     </div>
                 </div>
@@ -1366,6 +1367,7 @@ function renderDevicesList() {
                         </div>
                         <div class="device-actions">
                             <button class="btn btn-sm" onclick="replaceDevice('${serial}', '${zone.zone_id}')">Replace</button>
+                            <button class="btn btn-sm" onclick="moveDevice('${serial}', '${zone.zone_id}')">Move</button>
                             <button class="btn btn-sm btn-danger" onclick="removeDevice('${serial}', '${zone.zone_id}')">Remove</button>
                         </div>
                     </div>
@@ -1652,6 +1654,83 @@ async function removeDevice(serial, zoneId) {
         showToast('Device removed successfully', 'success');
     } catch (error) {
         console.error('Error removing device:', error);
+        showToast(error.message, 'error');
+    }
+}
+
+// ===== Move Device =====
+let moveDeviceSerial = null;
+let moveDeviceCurrentZoneId = null;
+
+function formatSerialForDisplay(serial) {
+    const clean = serial.replace(/\s/g, '');
+    if (clean.length === 12) {
+        return `${clean.slice(0,3)} ${clean.slice(3,6)} ${clean.slice(6,9)} ${clean.slice(9,12)}`;
+    }
+    return clean;
+}
+
+function moveDevice(serial, currentZoneId) {
+    moveDeviceSerial = serial.replace(/\s/g, '');
+    moveDeviceCurrentZoneId = currentZoneId;
+
+    // Populate zone selector (excluding current zone)
+    const select = document.getElementById('moveDeviceZone');
+    select.innerHTML = '<option value="">Select zone...</option>';
+    zones.forEach(zone => {
+        if (zone.zone_id !== currentZoneId) {
+            const option = document.createElement('option');
+            option.value = zone.zone_id;
+            option.textContent = zone.name;
+            select.appendChild(option);
+        }
+    });
+
+    // Show device info
+    const currentZone = zones.find(z => z.zone_id === currentZoneId);
+    document.getElementById('moveDeviceInfo').textContent =
+        `Moving device ${formatSerialForDisplay(moveDeviceSerial)} from "${currentZone ? currentZone.name : 'Unknown'}"`;
+
+    document.getElementById('moveDeviceModal').classList.add('show');
+}
+
+function closeMoveDeviceModal() {
+    document.getElementById('moveDeviceModal').classList.remove('show');
+    moveDeviceSerial = null;
+    moveDeviceCurrentZoneId = null;
+}
+
+async function confirmMoveDevice() {
+    const newZoneId = document.getElementById('moveDeviceZone').value;
+    if (!newZoneId) {
+        showToast('Please select a target zone', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/devices/${moveDeviceSerial}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_zone_id: newZoneId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to move device');
+        }
+
+        closeMoveDeviceModal();
+        await fetchZones();
+
+        if (currentPage === 'zoneDetail' && currentZoneDetail) {
+            renderZoneDetail(currentZoneDetail);
+        } else {
+            renderDevicesList();
+        }
+
+        showToast('Device moved successfully', 'success');
+    } catch (error) {
+        console.error('Error moving device:', error);
         showToast(error.message, 'error');
     }
 }
@@ -2006,6 +2085,9 @@ window.detectDeviceModel = detectDeviceModel;
 window.addDevice = addDevice;
 window.replaceDevice = replaceDevice;
 window.removeDevice = removeDevice;
+window.moveDevice = moveDevice;
+window.closeMoveDeviceModal = closeMoveDeviceModal;
+window.confirmMoveDevice = confirmMoveDevice;
 window.dismissToast = dismissToast;
 window.openInlineAddDevice = openInlineAddDevice;
 window.closeInlineAddDevice = closeInlineAddDevice;
