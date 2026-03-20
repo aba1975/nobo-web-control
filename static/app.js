@@ -217,8 +217,8 @@ function initWebSocket() {
                 const data = JSON.parse(event.data);
                 console.log('WebSocket message received:', data.type);
                 
-                if (data.type === 'zone_update') {
-                    handleZoneUpdate(data.zones);
+                if (data.type === 'zones_update') {
+                    handleZoneUpdate(data.data);
                 }
             } catch (error) {
                 console.error('Error parsing WebSocket message:', error);
@@ -486,15 +486,18 @@ function createZoneListItem(zone) {
         modeLabel = 'Away';
         modeCssClass = 'mode-away';
     } else {
-        // 'normal' — following schedule; reflect active schedule block in label
+        // 'normal' — following schedule; reflect active schedule block in label and dot color
         const schedMode = zone.schedule_mode || 'comfort';
         if (schedMode === 'eco') {
+            dotColor = '#27AE60';
             modeLabel = 'Schedule · Eco';
             modeCssClass = 'mode-eco';
         } else if (schedMode === 'away') {
+            dotColor = '#3498DB';
             modeLabel = 'Schedule · Away';
             modeCssClass = 'mode-away';
         } else {
+            dotColor = '#E74C3C';
             modeLabel = 'Schedule · Comfort';
             modeCssClass = 'mode-comfort';
         }
