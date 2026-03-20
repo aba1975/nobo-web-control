@@ -453,11 +453,10 @@ def get_current_schedule_mode(zone_id: str) -> str:
             if zone:
                 week_profile_id = zone.get('week_profile_id')
                 if week_profile_id and week_profile_id in hub.week_profiles:
-                    week_profile = hub.week_profiles[week_profile_id]
-                    # week_profile may already be structured as {day: [blocks]}
-                    day_schedule = week_profile.get(current_day)
+                    return hub.get_week_profile_status(week_profile_id)
         except Exception as e:
             logger.error(f"Error reading week profile for zone {zone_id}: {e}")
+        return 'comfort'
 
     if day_schedule:
         for block in day_schedule:
@@ -603,24 +602,12 @@ def get_zones_data() -> List[Dict[str, Any]]:
 
 
 def determine_zone_mode(zone_id: str, zone: Dict) -> str:
-    """Determine the current mode of a zone"""
-    # Check for active override
-    if zone.get('active_override_id'):
-        override = hub.overrides.get(zone.get('active_override_id'))
-        if override:
-            mode = override.get('mode', 0)
-            if mode == 0:
-                return 'comfort'
-            elif mode == 1:
-                return 'eco'
-            elif mode == 2:
-                return 'away'
-            elif mode == 3:
-                return 'off'
-    
-    # No override - check current schedule
-    # This is a simplified version - actual implementation would check week profiles
-    return 'normal'
+    """Determine the current mode of a zone.
+
+    Uses pynobo's built-in helper which correctly handles both zone-specific
+    and global overrides, and returns 'normal' when no override is active.
+    """
+    return hub.get_zone_override_mode(zone_id)
 
 
 # ===== API Endpoints =====
@@ -1430,31 +1417,36 @@ async def replace_device(serial: str, replacement: DeviceReplace):
         
         # Demo mode - replace in DEMO_ZONES
         if DEMO_MODE:
-            # Find the source zone for old_serial
-            src_zone = next((z for z in DEMO_ZONES if old_serial in z['components']), None)
+            # Find the source zone for old_serial, normalizing stored serials
+            src_zone = next(
+                (z for z in DEMO_ZONES if old_serial in [c.replace(' ', '') for c in z['components']]),
+                None
+            )
             if not src_zone:
                 raise HTTPException(status_code=404, detail="Device not found")
 
             # Check new serial doesn't already exist in any other zone
             for z in DEMO_ZONES:
-                if new_serial in z['components'] and z['zone_id'] != src_zone['zone_id']:
+                z_components_normalized = [c.replace(' ', '') for c in z['components']]
+                if new_serial in z_components_normalized and z['zone_id'] != src_zone['zone_id']:
                     raise HTTPException(
                         status_code=400,
                         detail=f"Device with serial {new_serial} is already registered in zone '{z['name']}'"
                     )
 
-            found = False
-            for demo_zone in DEMO_ZONES:
-                if old_serial in demo_zone['components']:
-                    idx = demo_zone['components'].index(old_serial)
-                    demo_zone['components'][idx] = new_serial
-                    found = True
-                    logger.info(f"Demo mode: Device {old_serial} replaced with {new_serial} in zone {demo_zone['zone_id']}")
-                    break
-            
-            if not found:
-                raise HTTPException(status_code=404, detail="Device not found")
-            
+            # Replace the serial in the source zone
+            components_normalized = [c.replace(' ', '') for c in src_zone['components']]
+            idx = components_normalized.index(old_serial)
+            # Ensure component_names is properly sized before updating
+            if 'component_names' not in src_zone:
+                src_zone['component_names'] = [''] * len(src_zone['components'])
+            elif len(src_zone['component_names']) < len(src_zone['components']):
+                src_zone['component_names'].extend(
+                    [''] * (len(src_zone['components']) - len(src_zone['component_names']))
+                )
+            src_zone['components'][idx] = new_serial
+            logger.info(f"Demo mode: Device {old_serial} replaced with {new_serial} in zone {src_zone['zone_id']}")
+
             return {
                 "status": "success",
                 "old_serial": old_serial,
@@ -1493,8 +1485,10 @@ async def remove_device(serial: str):
         if DEMO_MODE:
             found = False
             for demo_zone in DEMO_ZONES:
-                if serial_clean in demo_zone['components']:
-                    idx = demo_zone['components'].index(serial_clean)
+                # Normalize stored serials to handle any spaces
+                components_normalized = [c.replace(' ', '') for c in demo_zone['components']]
+                if serial_clean in components_normalized:
+                    idx = components_normalized.index(serial_clean)
                     demo_zone['components'].pop(idx)
                     if 'component_names' in demo_zone and idx < len(demo_zone['component_names']):
                         demo_zone['component_names'].pop(idx)
