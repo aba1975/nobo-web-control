@@ -4,6 +4,7 @@ FastAPI backend for local control of Nobø heating system via pynobo library
 """
 
 import os
+import re
 import asyncio
 import logging
 import threading
@@ -147,6 +148,31 @@ DEMO_ZONES = [
 # Away temperature (set by Nobø, not configurable)
 AWAY_TEMPERATURE = 7.0
 
+# Default demo schedule — shared by get_current_schedule_mode() and get_zone_schedule()
+DEFAULT_DEMO_SCHEDULE = {
+    'monday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                  {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                  {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+    'tuesday':   [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                  {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                  {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+    'wednesday': [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                  {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                  {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+    'thursday':  [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                  {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                  {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+    'friday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
+                  {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
+                  {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
+    'saturday':  [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                  {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                  {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+    'sunday':    [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
+                  {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
+                  {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
+}
+
 # ========================
 
 # Global variables
@@ -255,9 +281,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to connect to hub on startup: {e}")
         # Don't fail startup - allow server to run and show disconnected state
     
+    # Start background reconnection task (no-op in demo mode)
+    reconnect_task = asyncio.create_task(reconnect_loop())
+
     yield
     
     # Shutdown
+    reconnect_task.cancel()
     logger.info("Shutting down server...")
     # Close all websocket connections
     for ws in connected_websockets:
@@ -306,6 +336,66 @@ class ZoneUpdate(BaseModel):
     icon: Optional[str] = None
 
 
+VALID_SCHEDULE_MODES = {'comfort', 'eco', 'away'}
+SCHEDULE_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+_TIME_RE = re.compile(r'^(?:[01]\d|2[0-3]):[0-5]\d$|^24:00$')
+
+
+class ScheduleBlock(BaseModel):
+    start: str
+    end: str
+    mode: str
+
+    @classmethod
+    def _parse_minutes(cls, t: str) -> int:
+        h, m = t.split(':')
+        return int(h) * 60 + int(m)
+
+    def validate_fields(self) -> None:
+        """Raise ValueError if any field is invalid."""
+        if not _TIME_RE.match(self.start):
+            raise ValueError(f"Invalid start time: {self.start!r}")
+        if not _TIME_RE.match(self.end):
+            raise ValueError(f"Invalid end time: {self.end!r}")
+        if self.mode not in VALID_SCHEDULE_MODES:
+            raise ValueError(f"Invalid mode {self.mode!r}; must be one of {sorted(VALID_SCHEDULE_MODES)}")
+        if self._parse_minutes(self.end) <= self._parse_minutes(self.start):
+            raise ValueError(f"Block end ({self.end}) must be after start ({self.start})")
+
+
+class ScheduleUpdate(BaseModel):
+    """Validated weekly schedule payload for POST /api/zones/{zone_id}/schedule."""
+    schedule: Dict[str, List[ScheduleBlock]]
+
+    def validate_schedule(self) -> None:
+        """Raise ValueError describing the first problem found."""
+        missing = [d for d in SCHEDULE_DAYS if d not in self.schedule]
+        if missing:
+            raise ValueError(f"Missing days: {missing}")
+        extra = [d for d in self.schedule if d not in SCHEDULE_DAYS]
+        if extra:
+            raise ValueError(f"Unknown days: {extra}")
+
+        for day, blocks in self.schedule.items():
+            if not blocks:
+                raise ValueError(f"Day {day!r} has no time blocks")
+            # Individual block validation
+            for b in blocks:
+                b.validate_fields()
+            # Sort by start time and check coverage 00:00 → 24:00 without gaps/overlaps
+            sorted_blocks = sorted(blocks, key=lambda b: b._parse_minutes(b.start))
+            if sorted_blocks[0].start != '00:00':
+                raise ValueError(f"Day {day!r} must start at 00:00 (got {sorted_blocks[0].start!r})")
+            if sorted_blocks[-1].end != '24:00':
+                raise ValueError(f"Day {day!r} must end at 24:00 (got {sorted_blocks[-1].end!r})")
+            for i in range(len(sorted_blocks) - 1):
+                if sorted_blocks[i].end != sorted_blocks[i + 1].start:
+                    raise ValueError(
+                        f"Day {day!r}: gap/overlap between block ending {sorted_blocks[i].end!r} "
+                        f"and block starting {sorted_blocks[i + 1].start!r}"
+                    )
+
+
 # ===== Hub Connection & Callbacks =====
 def connect_to_hub_sync():
     """Connect to the Nobø Hub (synchronous, runs in thread)"""
@@ -346,6 +436,34 @@ async def connect_to_hub():
     
     # Wait a moment for connection to establish
     await asyncio.sleep(2)
+
+
+async def reconnect_loop():
+    """Background task that monitors hub connectivity and reconnects on disconnect."""
+    if DEMO_MODE:
+        return
+
+    RECONNECT_INTERVAL = 30  # seconds between reconnection attempts
+
+    while True:
+        await asyncio.sleep(RECONNECT_INTERVAL)
+
+        with connection_lock:
+            currently_connected = hub_connected
+
+        if not currently_connected:
+            logger.warning("Hub disconnected — attempting to reconnect...")
+            add_log_entry("error", "Hub disconnected — attempting reconnect", source="hub")
+            try:
+                await connect_to_hub()
+                with connection_lock:
+                    reconnected = hub_connected
+                if reconnected:
+                    logger.info("Hub reconnected successfully")
+                    add_log_entry("received", "Hub reconnected", source="hub")
+                    await broadcast_zone_update()
+            except Exception as exc:
+                logger.error(f"Reconnection attempt failed: {exc}")
 
 
 def hub_update_callback(hub_instance):
@@ -421,35 +539,9 @@ def get_current_schedule_mode(zone_id: str) -> str:
     day_schedule = None
 
     if DEMO_MODE:
-        # Check for user-saved schedule first
-        if zone_id in demo_schedules:
-            day_schedule = demo_schedules[zone_id].get(current_day)
-        else:
-            # Fall back to default sample schedule
-            sample_schedule = {
-                'monday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-                'tuesday':   [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-                'wednesday': [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-                'thursday':  [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-                'friday':    [{'start': '00:00', 'end': '07:00', 'mode': 'eco'},
-                              {'start': '07:00', 'end': '22:00', 'mode': 'comfort'},
-                              {'start': '22:00', 'end': '24:00', 'mode': 'eco'}],
-                'saturday':  [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
-                              {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
-                              {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
-                'sunday':    [{'start': '00:00', 'end': '09:00', 'mode': 'eco'},
-                              {'start': '09:00', 'end': '23:00', 'mode': 'comfort'},
-                              {'start': '23:00', 'end': '24:00', 'mode': 'eco'}],
-            }
-            day_schedule = sample_schedule.get(current_day)
+        # Check for user-saved schedule first, fall back to default
+        saved = demo_schedules.get(zone_id, DEFAULT_DEMO_SCHEDULE)
+        day_schedule = saved.get(current_day)
     elif hub:
         try:
             zone = hub.zones.get(zone_id)
@@ -551,7 +643,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
             # Get components for this zone
             zone_components = []
             for comp_id, comp in hub.components.items():
-                if comp.get('zone', '') == zone_id:
+                if comp.get('zone_id', '') == zone_id:
                     zone_components.append(comp_id)
             
             # Detect device type for EACH component individually
@@ -575,14 +667,19 @@ def get_zones_data() -> List[Dict[str, Any]]:
             # Format components for display
             components_display = [format_serial_display(c) for c in zone_components]
             
-            # Get current temperature
-            current_temp = zone.get('temp')
-            if current_temp is not None:
-                current_temp = float(current_temp) / 100.0  # pynobo stores temps in centidegrees
+            # Get current temperature using pynobo's helper (reads hub.temperatures dict)
+            current_temp_raw = hub.get_current_zone_temperature(zone_id)
+            if current_temp_raw is not None:
+                try:
+                    current_temp = float(current_temp_raw)
+                except (ValueError, TypeError):
+                    current_temp = None
+            else:
+                current_temp = None
             
-            # Get comfort and eco temperatures
-            comfort_temp = zone.get('comfort_temperature', 2100) / 100.0
-            eco_temp = zone.get('eco_temperature', 1700) / 100.0
+            # Get comfort and eco temperatures (pynobo stores as whole-degree integers)
+            comfort_temp = float(zone.get('temp_comfort_c', 21))
+            eco_temp = float(zone.get('temp_eco_c', 17))
             
             # Determine current mode
             mode = determine_zone_mode(zone_id, zone)
@@ -602,7 +699,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
                 'away_temperature': AWAY_TEMPERATURE,
                 'current_mode': mode,
                 'schedule_mode': get_current_schedule_mode(str(zone_id)) if mode == 'normal' else None,
-                'active_override_id': zone.get('active_override_id'),
+                'active_override_id': zone.get('deprecated_override_id'),
                 'device_type': device_name,
                 'supports_comfort': any_supports_temp,
                 'supports_eco': any_supports_temp,
@@ -631,6 +728,19 @@ def determine_zone_mode(zone_id: str, zone: Dict) -> str:
 
 
 # ===== API Endpoints =====
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for monitoring and load balancers"""
+    with connection_lock:
+        connected = hub_connected
+    return {
+        "status": "ok",
+        "connected": connected,
+        "demo_mode": DEMO_MODE,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
 @app.get("/api/status")
 async def get_status():
     """Get connection status"""
@@ -718,6 +828,7 @@ async def add_zone(zone: ZoneAdd):
                 "icon": zone.icon.strip(),
                 "rooms": [],
                 "components": [],
+                "component_names": [],
                 "current_temp": None,
                 "comfort_temp": 21.0,
                 "eco_temp": 18.0,
@@ -877,20 +988,30 @@ async def set_zone_override(zone_id: str, mode: str):
         
         if mode == 'normal':
             # Remove override - return to schedule
-            hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
+            hub.create_override(
+                pynobo.nobo.API.OVERRIDE_MODE_NORMAL,
+                pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+                pynobo.nobo.API.OVERRIDE_TARGET_ZONE,
+                zone_id,
+            )
             add_log_entry(
                 "sent",
-                f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
-                command=f"create_override now 0 NORMAL {zone_id}",
+                f"create_override(NORMAL, NOW, ZONE, zone_{zone_id}) — cancel override",
+                command=f"create_override NORMAL NOW ZONE {zone_id}",
                 source="api",
             )
         else:
             # Set override mode
-            hub.create_override('now', 0, mode_map[mode], zone_id)
+            hub.create_override(
+                mode_map[mode],
+                pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+                pynobo.nobo.API.OVERRIDE_TARGET_ZONE,
+                zone_id,
+            )
             add_log_entry(
                 "sent",
-                f"create_override(now, 0, {mode.upper()}, zone_{zone_id})",
-                command=f"create_override now 0 {mode} {zone_id}",
+                f"create_override({mode.upper()}, NOW, ZONE, zone_{zone_id})",
+                command=f"create_override {mode} NOW ZONE {zone_id}",
                 source="api",
             )
         
@@ -967,7 +1088,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
         # Get components for this zone and auto-detect device type
         zone_components = []
         for comp_id, comp in hub.components.items():
-            if comp.get('zone', '') == zone_id:
+            if comp.get('zone_id', '') == zone_id:
                 zone_components.append(comp_id)
         
         any_supports = False
@@ -995,24 +1116,17 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
             if not 7 <= temps.eco <= 30:
                 raise HTTPException(status_code=400, detail="Eco temperature must be between 7 and 30°C")
         
-        # Get current temperatures to avoid overwriting
-        current_comfort = zone.get('comfort_temperature', 2100)
-        current_eco = zone.get('eco_temperature', 1700)
+        # Get current temperatures to avoid overwriting (pynobo stores as whole-degree integers)
+        current_comfort = int(zone.get('temp_comfort_c', 21))
+        current_eco = int(zone.get('temp_eco_c', 17))
         
-        # Update temperatures
+        # Update temperatures using keyword arguments (pynobo expects whole-degree integers)
         if temps.comfort is not None and temps.eco is not None:
-            # Both temperatures provided - update together
-            comfort_centidegrees = int(temps.comfort * 100)
-            eco_centidegrees = int(temps.eco * 100)
-            hub.update_zone(zone_id, zone['name'], comfort_centidegrees, eco_centidegrees)
+            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=int(temps.eco))
         elif temps.comfort is not None:
-            # Only comfort temperature provided
-            comfort_centidegrees = int(temps.comfort * 100)
-            hub.update_zone(zone_id, zone['name'], comfort_centidegrees, current_eco)
+            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=current_eco)
         elif temps.eco is not None:
-            # Only eco temperature provided
-            eco_centidegrees = int(temps.eco * 100)
-            hub.update_zone(zone_id, zone['name'], current_comfort, eco_centidegrees)
+            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=current_comfort, temp_eco_c=int(temps.eco))
         
         # Wait for update
         await asyncio.sleep(0.5)
@@ -1066,28 +1180,34 @@ async def set_global_override(mode: str):
             )
             return {"status": "success", "mode": mode}
         
-        # Real hub mode
+        # Real hub mode — use a single global override command instead of per-zone
         if not hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
-        # Apply override to all zones
-        for zone_id in hub.zones.keys():
-            if mode == 'normal' or mode == 'home':
-                hub.create_override('now', 0, pynobo.nobo.API.OVERRIDE_MODE_NORMAL, zone_id)
-                add_log_entry(
-                    "sent",
-                    f"create_override(now, 0, NORMAL, zone_{zone_id}) — cancel override",
-                    command=f"create_override now 0 NORMAL {zone_id}",
-                    source="api",
-                )
-            else:
-                hub.create_override('now', 0, mode_map[mode], zone_id)
-                add_log_entry(
-                    "sent",
-                    f"create_override(now, 0, {mode.upper()}, zone_{zone_id})",
-                    command=f"create_override now 0 {mode} {zone_id}",
-                    source="api",
-                )
+        if mode == 'normal' or mode == 'home':
+            hub.create_override(
+                pynobo.nobo.API.OVERRIDE_MODE_NORMAL,
+                pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+                pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
+            )
+            add_log_entry(
+                "sent",
+                "create_override(NORMAL, NOW, GLOBAL) — cancel all overrides",
+                command="create_override NORMAL NOW GLOBAL",
+                source="api",
+            )
+        else:
+            hub.create_override(
+                mode_map[mode],
+                pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+                pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
+            )
+            add_log_entry(
+                "sent",
+                f"create_override({mode.upper()}, NOW, GLOBAL)",
+                command=f"create_override {mode} NOW GLOBAL",
+                source="api",
+            )
         
         # Wait for updates
         await asyncio.sleep(0.5)
@@ -1104,10 +1224,25 @@ async def get_week_profiles():
     with connection_lock:
         connected = hub_connected
     
-    if not connected or not hub:
+    if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
+        # Demo mode — return the default schedule as a sample week profile
+        if DEMO_MODE:
+            return {
+                "week_profiles": [
+                    {
+                        "profile_id": "1",
+                        "name": "Default",
+                        "profile": DEFAULT_DEMO_SCHEDULE,
+                    }
+                ]
+            }
+
+        if not hub:
+            raise HTTPException(status_code=503, detail="Hub not connected")
+
         profiles = []
         for profile_id, profile in hub.week_profiles.items():
             profiles.append({
@@ -1132,63 +1267,18 @@ async def get_zone_schedule(zone_id: str):
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
-        # Demo mode - return sample schedule
+        # Demo mode — use saved schedule if available, otherwise DEFAULT_DEMO_SCHEDULE
         if DEMO_MODE:
             demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
-            # Return previously saved schedule if available, otherwise fall back to sample
-            if zone_id in demo_schedules:
-                return {
-                    "zone_id": zone_id,
-                    "zone_name": demo_zone['name'],
-                    "schedule": demo_schedules[zone_id]
-                }
-
-            # Sample schedule: Eco 00:00-07:00, Comfort 07:00-22:00, Eco 22:00-24:00
-            sample_schedule = {
+            saved = demo_schedules.get(zone_id, DEFAULT_DEMO_SCHEDULE)
+            return {
                 "zone_id": zone_id,
                 "zone_name": demo_zone['name'],
-                "schedule": {
-                    "monday": [
-                        {"start": "00:00", "end": "07:00", "mode": "eco"},
-                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
-                        {"start": "22:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "tuesday": [
-                        {"start": "00:00", "end": "07:00", "mode": "eco"},
-                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
-                        {"start": "22:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "wednesday": [
-                        {"start": "00:00", "end": "07:00", "mode": "eco"},
-                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
-                        {"start": "22:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "thursday": [
-                        {"start": "00:00", "end": "07:00", "mode": "eco"},
-                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
-                        {"start": "22:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "friday": [
-                        {"start": "00:00", "end": "07:00", "mode": "eco"},
-                        {"start": "07:00", "end": "22:00", "mode": "comfort"},
-                        {"start": "22:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "saturday": [
-                        {"start": "00:00", "end": "09:00", "mode": "eco"},
-                        {"start": "09:00", "end": "23:00", "mode": "comfort"},
-                        {"start": "23:00", "end": "24:00", "mode": "eco"}
-                    ],
-                    "sunday": [
-                        {"start": "00:00", "end": "09:00", "mode": "eco"},
-                        {"start": "09:00", "end": "23:00", "mode": "comfort"},
-                        {"start": "23:00", "end": "24:00", "mode": "eco"}
-                    ]
-                }
+                "schedule": saved,
             }
-            return sample_schedule
         
         # Real hub mode - get week profile from pynobo
         if not hub:
@@ -1220,7 +1310,7 @@ async def get_zone_schedule(zone_id: str):
 
 
 @app.post("/api/zones/{zone_id}/schedule")
-async def update_zone_schedule(zone_id: str, schedule: dict):
+async def update_zone_schedule(zone_id: str, schedule: ScheduleUpdate):
     """Update the weekly schedule for a specific zone"""
     with connection_lock:
         connected = hub_connected
@@ -1229,15 +1319,23 @@ async def update_zone_schedule(zone_id: str, schedule: dict):
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
+        # Validate schedule structure
+        try:
+            schedule.validate_schedule()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
         # Demo mode - store schedule and return success
         if DEMO_MODE:
             demo_zone = next((z for z in DEMO_ZONES if z['zone_id'] == zone_id), None)
             if not demo_zone:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
-            # The request body is {"schedule": {"monday": [...], ...}}; extract the inner dict
-            incoming_schedule = schedule.get('schedule', schedule)
-            demo_schedules[zone_id] = incoming_schedule
+            # Serialise ScheduleBlock objects to plain dicts for storage
+            demo_schedules[zone_id] = {
+                day: [b.model_dump() for b in blocks]
+                for day, blocks in schedule.schedule.items()
+            }
             logger.info(f"Demo mode: Schedule updated for zone {zone_id}")
             return {"status": "success", "zone_id": zone_id, "message": "Schedule updated (demo mode)"}
         
