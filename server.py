@@ -267,6 +267,15 @@ def parse_serial_input(serial: str) -> str:
     return str(serial).replace(' ', '').strip()
 
 
+def validate_serial(serial: str) -> tuple[bool, str]:
+    """Validate and clean a device serial number.
+    Returns (is_valid, cleaned_serial_or_error_message)."""
+    clean = str(serial).replace(' ', '').strip()
+    if not re.fullmatch(r'\d{12}', clean):
+        return False, "Serial number must be exactly 12 digits (0-9 only)"
+    return True, clean
+
+
 # ===== Lifespan Context Manager =====
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -403,19 +412,20 @@ def connect_to_hub_sync():
     
     try:
         logger.info(f"Connecting to Nobø Hub at {NOBO_IP} with serial {NOBO_SERIAL}...")
-        hub = pynobo.nobo(NOBO_SERIAL, NOBO_IP, discover=False)
+        new_hub = pynobo.nobo(NOBO_SERIAL, NOBO_IP, discover=False)
         with connection_lock:
+            hub = new_hub
             hub_connected = True
         logger.info("Successfully connected to Nobø Hub")
         
         # Register callback for hub updates
-        hub.register_callback(hub_update_callback)
+        new_hub.register_callback(hub_update_callback)
         
     except Exception as e:
         logger.error(f"Failed to connect to Nobø Hub: {e}")
         with connection_lock:
             hub_connected = False
-        hub = None
+            hub = None
         raise
 
 
@@ -439,31 +449,45 @@ async def connect_to_hub():
 
 
 async def reconnect_loop():
-    """Background task that monitors hub connectivity and reconnects on disconnect."""
+    """Background task that monitors hub connectivity and reconnects with exponential backoff."""
     if DEMO_MODE:
         return
 
-    RECONNECT_INTERVAL = 30  # seconds between reconnection attempts
+    MIN_INTERVAL = 5      # Start at 5 seconds
+    MAX_INTERVAL = 300     # Cap at 5 minutes
+    interval = MIN_INTERVAL
+    attempt = 0
 
     while True:
-        await asyncio.sleep(RECONNECT_INTERVAL)
+        await asyncio.sleep(interval)
 
         with connection_lock:
             currently_connected = hub_connected
 
         if not currently_connected:
-            logger.warning("Hub disconnected — attempting to reconnect...")
-            add_log_entry("error", "Hub disconnected — attempting reconnect", source="hub")
+            attempt += 1
+            logger.warning(f"Hub disconnected — reconnect attempt #{attempt} (next retry in {interval}s)")
+            add_log_entry("error", f"Hub disconnected — reconnect attempt #{attempt} (delay: {interval}s)", source="hub")
             try:
                 await connect_to_hub()
                 with connection_lock:
                     reconnected = hub_connected
                 if reconnected:
-                    logger.info("Hub reconnected successfully")
-                    add_log_entry("received", "Hub reconnected", source="hub")
+                    logger.info(f"Hub reconnected successfully after {attempt} attempt(s)")
+                    add_log_entry("received", f"Hub reconnected after {attempt} attempt(s)", source="hub")
+                    interval = MIN_INTERVAL  # Reset on success
+                    attempt = 0
                     await broadcast_zone_update()
+                else:
+                    interval = min(interval * 2, MAX_INTERVAL)  # Exponential backoff
             except Exception as exc:
-                logger.error(f"Reconnection attempt failed: {exc}")
+                logger.error(f"Reconnection attempt #{attempt} failed: {exc}")
+                interval = min(interval * 2, MAX_INTERVAL)  # Exponential backoff
+        else:
+            # Connected — reset backoff state
+            if interval != MIN_INTERVAL:
+                interval = MIN_INTERVAL
+                attempt = 0
 
 
 def hub_update_callback(hub_instance):
@@ -482,10 +506,11 @@ async def broadcast_zone_update():
     """Send updated zone data to all connected WebSocket clients"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         return
-    if not DEMO_MODE and not hub:
+    if not DEMO_MODE and not current_hub:
         return
     
     try:
@@ -542,27 +567,30 @@ def get_current_schedule_mode(zone_id: str) -> str:
         # Check for user-saved schedule first, fall back to default
         saved = demo_schedules.get(zone_id, DEFAULT_DEMO_SCHEDULE)
         day_schedule = saved.get(current_day)
-    elif hub:
-        try:
-            zone = hub.zones.get(zone_id)
-            if zone:
-                week_profile_id = zone.get('week_profile_id')
-                if week_profile_id and week_profile_id in hub.week_profiles:
-                    status = hub.get_week_profile_status(week_profile_id)
-                    # get_week_profile_status() may return a pynobo API integer
-                    # constant instead of a string — map it back to the string
-                    # values used throughout the rest of the application.
-                    if isinstance(status, str) and status in ('comfort', 'eco', 'away'):
-                        return status
-                    mode_reverse_map = {
-                        pynobo.nobo.API.OVERRIDE_MODE_COMFORT: 'comfort',
-                        pynobo.nobo.API.OVERRIDE_MODE_ECO: 'eco',
-                        pynobo.nobo.API.OVERRIDE_MODE_AWAY: 'away',
-                    }
-                    return mode_reverse_map.get(status, 'comfort')
-        except Exception as e:
-            logger.error(f"Error reading week profile for zone {zone_id}: {e}")
-        return 'comfort'
+    else:
+        with connection_lock:
+            current_hub = hub
+        if current_hub:
+            try:
+                zone = current_hub.zones.get(zone_id)
+                if zone:
+                    week_profile_id = zone.get('week_profile_id')
+                    if week_profile_id and week_profile_id in current_hub.week_profiles:
+                        status = current_hub.get_week_profile_status(week_profile_id)
+                        # get_week_profile_status() may return a pynobo API integer
+                        # constant instead of a string — map it back to the string
+                        # values used throughout the rest of the application.
+                        if isinstance(status, str) and status in ('comfort', 'eco', 'away'):
+                            return status
+                        mode_reverse_map = {
+                            pynobo.nobo.API.OVERRIDE_MODE_COMFORT: 'comfort',
+                            pynobo.nobo.API.OVERRIDE_MODE_ECO: 'eco',
+                            pynobo.nobo.API.OVERRIDE_MODE_AWAY: 'away',
+                        }
+                        return mode_reverse_map.get(status, 'comfort')
+            except Exception as e:
+                logger.error(f"Error reading week profile for zone {zone_id}: {e}")
+            return 'comfort'
 
     if day_schedule:
         for block in day_schedule:
@@ -578,6 +606,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
     """Get current data for all zones"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         return []
@@ -632,17 +661,17 @@ def get_zones_data() -> List[Dict[str, Any]]:
         return zones
     
     # Real hub mode
-    if not hub:
+    if not current_hub:
         return []
     
     zones = []
     try:
-        for zone_id, zone in hub.zones.items():
+        for zone_id, zone in current_hub.zones.items():
             zone_name = zone.get('name', f'Zone {zone_id}')
             
             # Get components for this zone
             zone_components = []
-            for comp_id, comp in hub.components.items():
+            for comp_id, comp in current_hub.components.items():
                 if comp.get('zone_id', '') == zone_id:
                     zone_components.append(comp_id)
             
@@ -668,7 +697,7 @@ def get_zones_data() -> List[Dict[str, Any]]:
             components_display = [format_serial_display(c) for c in zone_components]
             
             # Get current temperature using pynobo's helper (reads hub.temperatures dict)
-            current_temp_raw = hub.get_current_zone_temperature(zone_id)
+            current_temp_raw = current_hub.get_current_zone_temperature(zone_id)
             if current_temp_raw is not None:
                 try:
                     current_temp = float(current_temp_raw)
@@ -718,10 +747,12 @@ def determine_zone_mode(zone_id: str, zone: Dict) -> str:
     Uses pynobo's built-in helper which correctly handles both zone-specific
     and global overrides, and returns 'normal' when no override is active.
     """
-    if hub is None:
+    with connection_lock:
+        current_hub = hub
+    if current_hub is None:
         return 'normal'
     try:
-        return hub.get_zone_override_mode(zone_id)
+        return current_hub.get_zone_override_mode(zone_id)
     except Exception as e:
         logger.error(f"Error determining zone mode for {zone_id}: {e}")
         return 'normal'
@@ -760,6 +791,7 @@ async def get_hub_info():
     """Get hub information"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -776,15 +808,15 @@ async def get_hub_info():
             }
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         # Get hub info from pynobo
         hub_info = {
-            "name": getattr(hub, 'hub_name', 'Nobø Hub'),
+            "name": getattr(current_hub, 'hub_name', 'Nobø Hub'),
             "serial": NOBO_SERIAL,
-            "software_version": getattr(hub, 'hub_version', 'Unknown'),
-            "connected": hub_connected
+            "software_version": getattr(current_hub, 'hub_version', 'Unknown'),
+            "connected": connected
         }
         return hub_info
     except Exception as e:
@@ -797,6 +829,7 @@ async def get_zones():
     """Get all zones with current status"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -814,6 +847,7 @@ async def add_zone(zone: ZoneAdd):
     """Create a new zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
 
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -853,6 +887,7 @@ async def update_zone(zone_id: str, update: ZoneUpdate):
     """Rename a zone and/or change its icon"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
 
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -878,17 +913,17 @@ async def update_zone(zone_id: str, update: ZoneUpdate):
             return {"status": "success", "zone_id": zone_id, "name": demo_zone['name'], "icon": demo_zone['icon']}
 
         # Real hub mode — icon is stored locally only (pynobo doesn't support icons)
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
 
-        if zone_id not in hub.zones:
+        if zone_id not in current_hub.zones:
             raise HTTPException(status_code=404, detail="Zone not found")
 
-        zone = hub.zones[zone_id]
+        zone = current_hub.zones[zone_id]
         old_name = zone.get('name', zone_id)
 
         if update.name is not None:
-            hub.update_zone(zone_id, update.name.strip())
+            current_hub.update_zone(zone_id, update.name.strip())
             add_log_entry(
                 "sent",
                 f"update_zone({zone_id}, '{update.name.strip()}')",
@@ -911,6 +946,7 @@ async def delete_zone(zone_id: str):
     """Delete a zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
 
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -946,6 +982,7 @@ async def set_zone_override(zone_id: str, mode: str):
     """Set override mode for a specific zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -983,12 +1020,12 @@ async def set_zone_override(zone_id: str, mode: str):
             return {"status": "success", "zone_id": zone_id, "mode": mode}
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         if mode == 'normal':
             # Remove override - return to schedule
-            hub.create_override(
+            current_hub.create_override(
                 pynobo.nobo.API.OVERRIDE_MODE_NORMAL,
                 pynobo.nobo.API.OVERRIDE_TYPE_NOW,
                 pynobo.nobo.API.OVERRIDE_TARGET_ZONE,
@@ -1002,7 +1039,7 @@ async def set_zone_override(zone_id: str, mode: str):
             )
         else:
             # Set override mode
-            hub.create_override(
+            current_hub.create_override(
                 mode_map[mode],
                 pynobo.nobo.API.OVERRIDE_TYPE_NOW,
                 pynobo.nobo.API.OVERRIDE_TARGET_ZONE,
@@ -1029,6 +1066,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
     """Set comfort and/or eco temperature for a zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1076,18 +1114,18 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
             return {"status": "success", "zone_id": zone_id, "comfort": temps.comfort, "eco": temps.eco}
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         # Get current zone
-        if zone_id not in hub.zones:
+        if zone_id not in current_hub.zones:
             raise HTTPException(status_code=404, detail="Zone not found")
         
-        zone = hub.zones[zone_id]
+        zone = current_hub.zones[zone_id]
         
         # Get components for this zone and auto-detect device type
         zone_components = []
-        for comp_id, comp in hub.components.items():
+        for comp_id, comp in current_hub.components.items():
             if comp.get('zone_id', '') == zone_id:
                 zone_components.append(comp_id)
         
@@ -1122,11 +1160,11 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
         
         # Update temperatures using keyword arguments (pynobo expects whole-degree integers)
         if temps.comfort is not None and temps.eco is not None:
-            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=int(temps.eco))
+            current_hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=int(temps.eco))
         elif temps.comfort is not None:
-            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=current_eco)
+            current_hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=int(temps.comfort), temp_eco_c=current_eco)
         elif temps.eco is not None:
-            hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=current_comfort, temp_eco_c=int(temps.eco))
+            current_hub.update_zone(zone_id, name=zone['name'], temp_comfort_c=current_comfort, temp_eco_c=int(temps.eco))
         
         # Wait for update
         await asyncio.sleep(0.5)
@@ -1144,6 +1182,7 @@ async def set_global_override(mode: str):
     """Set global override mode for all zones"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1181,11 +1220,11 @@ async def set_global_override(mode: str):
             return {"status": "success", "mode": mode}
         
         # Real hub mode — use a single global override command instead of per-zone
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         if mode == 'normal' or mode == 'home':
-            hub.create_override(
+            current_hub.create_override(
                 pynobo.nobo.API.OVERRIDE_MODE_NORMAL,
                 pynobo.nobo.API.OVERRIDE_TYPE_NOW,
                 pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
@@ -1197,7 +1236,7 @@ async def set_global_override(mode: str):
                 source="api",
             )
         else:
-            hub.create_override(
+            current_hub.create_override(
                 mode_map[mode],
                 pynobo.nobo.API.OVERRIDE_TYPE_NOW,
                 pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
@@ -1223,6 +1262,7 @@ async def get_week_profiles():
     """Get all week profiles"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1240,11 +1280,11 @@ async def get_week_profiles():
                 ]
             }
 
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
 
         profiles = []
-        for profile_id, profile in hub.week_profiles.items():
+        for profile_id, profile in current_hub.week_profiles.items():
             profiles.append({
                 'profile_id': str(profile_id),
                 'name': profile.get('name', f'Profile {profile_id}'),
@@ -1262,6 +1302,7 @@ async def get_zone_schedule(zone_id: str):
     """Get the weekly schedule for a specific zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1281,19 +1322,19 @@ async def get_zone_schedule(zone_id: str):
             }
         
         # Real hub mode - get week profile from pynobo
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
-        if zone_id not in hub.zones:
+        if zone_id not in current_hub.zones:
             raise HTTPException(status_code=404, detail="Zone not found")
         
-        zone = hub.zones[zone_id]
+        zone = current_hub.zones[zone_id]
         week_profile_id = zone.get('week_profile_id')
         
-        if not week_profile_id or week_profile_id not in hub.week_profiles:
+        if not week_profile_id or week_profile_id not in current_hub.week_profiles:
             raise HTTPException(status_code=404, detail="Week profile not found for zone")
         
-        week_profile = hub.week_profiles[week_profile_id]
+        week_profile = current_hub.week_profiles[week_profile_id]
         
         return {
             "zone_id": zone_id,
@@ -1314,6 +1355,7 @@ async def update_zone_schedule(zone_id: str, schedule: ScheduleUpdate):
     """Update the weekly schedule for a specific zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1340,10 +1382,10 @@ async def update_zone_schedule(zone_id: str, schedule: ScheduleUpdate):
             return {"status": "success", "zone_id": zone_id, "message": "Schedule updated (demo mode)"}
         
         # Real hub mode - update week profile using pynobo
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
-        if zone_id not in hub.zones:
+        if zone_id not in current_hub.zones:
             raise HTTPException(status_code=404, detail="Zone not found")
         
         # This would need to be implemented based on pynobo's week profile format
@@ -1363,6 +1405,7 @@ async def get_devices():
     """Get all registered devices with their zone assignments"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1403,15 +1446,17 @@ async def add_device(device: DeviceAdd):
     """Add a new device to a zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
         # Parse and validate serial
-        serial = parse_serial_input(device.serial)
-        if len(serial) != 12:
-            raise HTTPException(status_code=400, detail="Serial number must be 12 digits")
+        is_valid, result = validate_serial(device.serial)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=result)
+        serial = result
         
         # Auto-detect device type
         device_name, supports_comfort, supports_eco = detect_device_type(serial)
@@ -1451,7 +1496,7 @@ async def add_device(device: DeviceAdd):
             }
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         raise HTTPException(status_code=501, detail="Add device not yet implemented for real hub")
@@ -1476,6 +1521,7 @@ async def rename_device(serial: str, body: DeviceRename):
     """Update the friendly name of a device"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
 
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1499,7 +1545,7 @@ async def rename_device(serial: str, body: DeviceRename):
             raise HTTPException(status_code=404, detail="Device not found")
 
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
 
         raise HTTPException(status_code=501, detail="Device renaming is not yet supported for connected hubs")
@@ -1516,17 +1562,18 @@ async def replace_device(serial: str, replacement: DeviceReplace):
     """Replace a device with a new one"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
     
     try:
-        # Parse serials
+        # Parse and validate serials
         old_serial = parse_serial_input(serial)
-        new_serial = parse_serial_input(replacement.new_serial)
-        
-        if len(new_serial) != 12:
-            raise HTTPException(status_code=400, detail="New serial number must be 12 digits")
+        is_valid, result = validate_serial(replacement.new_serial)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=result)
+        new_serial = result
         
         # Auto-detect new device type
         device_name, _, _ = detect_device_type(new_serial)
@@ -1574,7 +1621,7 @@ async def replace_device(serial: str, replacement: DeviceReplace):
             }
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         raise HTTPException(status_code=501, detail="Replace device not yet implemented for real hub")
@@ -1591,6 +1638,7 @@ async def remove_device(serial: str):
     """Remove a device from its zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
     
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1620,7 +1668,7 @@ async def remove_device(serial: str):
             return {"status": "success", "serial": serial_clean}
         
         # Real hub mode
-        if not hub:
+        if not current_hub:
             raise HTTPException(status_code=503, detail="Hub not connected")
         
         raise HTTPException(status_code=501, detail="Remove device not yet implemented for real hub")
@@ -1641,6 +1689,7 @@ async def move_device(serial: str, move: DeviceMove):
     """Move a device from its current zone to a different zone"""
     with connection_lock:
         connected = hub_connected
+        current_hub = hub
 
     if not connected:
         raise HTTPException(status_code=503, detail="Hub not connected")
@@ -1745,8 +1794,9 @@ async def websocket_endpoint(websocket: WebSocket):
         # Send initial data
         with connection_lock:
             connected = hub_connected
+            current_hub = hub
         
-        if connected and (hub or DEMO_MODE):
+        if connected and (current_hub or DEMO_MODE):
             zones_data = get_zones_data()
             await websocket.send_json({
                 "type": "zones_update",

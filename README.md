@@ -7,7 +7,7 @@ A modern, web-based control system for the Nobø Energy Hub, providing local con
 ### Core Functionality
 - 🌡️ **Real-time Temperature Monitoring** - See current temperatures for all zones
 - 🎛️ **Zone Control** - Individual control of each heating zone with override capabilities
-- 🔥 **Multiple Modes** - Comfort, Eco, Away, and Off modes
+- 🔥 **Multiple Modes** - Comfort, Eco, Away, and Schedule modes
 - 📅 **Weekly Schedule Editor** - Configure heating schedules for each zone
 - 🔧 **Device Management** - Add, remove, and replace devices with auto-detection
 - 🏠 **Global Controls** - Quick Home and Away modes for all zones
@@ -256,7 +256,7 @@ The main Zones page shows all your heating zones:
 - View current temperature and mode
 - See device type (NTB-2R or R80 RDC 700)
 - For grouped zones, see all rooms (e.g., "North · South")
-- Override individual zones: Comfort, Eco, Away, or Off
+- Override individual zones: Comfort, Eco, or Away
 - For NTB-2R: Adjust comfort and eco temperatures with +/- buttons
 - Cancel overrides to return to schedule
 - Status indicator shows if zone is following schedule or has an override
@@ -290,7 +290,7 @@ Manage your heating devices:
 
 ### Zones
 - `GET /api/zones` - Get all zones with current status
-- `POST /api/zones/{zone_id}/override/{mode}` - Set zone override (comfort/eco/away/off/normal)
+- `POST /api/zones/{zone_id}/override/{mode}` - Set zone override (comfort/eco/away/normal)
 - `POST /api/zones/{zone_id}/temperature` - Update zone temperatures (NTB-2R only)
 - `GET /api/zones/{zone_id}/schedule` - Get zone weekly schedule
 - `POST /api/zones/{zone_id}/schedule` - Update zone weekly schedule
