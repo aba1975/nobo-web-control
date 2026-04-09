@@ -169,6 +169,50 @@ class TestReplaceDevice:
         r = client.put("/api/devices/000000000000", json={"new_serial": "210000033333"})
         assert r.status_code == 404
 
+    def test_replace_device_invalid_old_serial_returns_400(self, client):
+        """Verify that an invalid old serial path parameter is rejected with 400."""
+        r = client.put("/api/devices/NOT-A-SERIAL", json={
+            "new_serial": "210000099004"
+        })
+        assert r.status_code == 400
+        assert "12 digits" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/devices/{serial}/name (rename device)
+# ---------------------------------------------------------------------------
+
+class TestRenameDevice:
+    def test_rename_valid_device(self, client):
+        # Use an existing demo device serial
+        r = client.patch("/api/devices/210000016247/name", json={
+            "name": "My Custom Name"
+        })
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "success"
+        assert body["name"] == "My Custom Name"
+
+    def test_rename_invalid_serial_returns_400(self, client):
+        """Verify that an invalid serial path parameter is rejected with 400."""
+        r = client.patch("/api/devices/NOTADEVICE12/name", json={
+            "name": "New Name"
+        })
+        assert r.status_code == 400
+        assert "12 digits" in r.json()["detail"]
+
+    def test_rename_nonexistent_device_returns_404(self, client):
+        r = client.patch("/api/devices/210000099999/name", json={
+            "name": "Ghost Device"
+        })
+        assert r.status_code == 404
+
+    def test_rename_empty_name_returns_400(self, client):
+        r = client.patch("/api/devices/210000016247/name", json={
+            "name": "   "
+        })
+        assert r.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # Demo mode behaviour verification
