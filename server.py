@@ -307,9 +307,11 @@ async def lifespan(app: FastAPI):
     connected_websockets.clear()
     
     # Disconnect from hub
-    if hub:
+    with connection_lock:
+        current_hub = hub
+    if current_hub:
         try:
-            hub.stop()
+            current_hub.stop()
         except:
             pass
 
@@ -1527,7 +1529,10 @@ async def rename_device(serial: str, body: DeviceRename):
         raise HTTPException(status_code=503, detail="Hub not connected")
 
     try:
-        clean_serial = parse_serial_input(serial)
+        is_valid, result = validate_serial(serial)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=result)
+        clean_serial = result
         new_name = body.name.strip()
         if not new_name:
             raise HTTPException(status_code=400, detail="Name cannot be empty")
@@ -1569,7 +1574,10 @@ async def replace_device(serial: str, replacement: DeviceReplace):
     
     try:
         # Parse and validate serials
-        old_serial = parse_serial_input(serial)
+        is_valid_old, old_result = validate_serial(serial)
+        if not is_valid_old:
+            raise HTTPException(status_code=400, detail=old_result)
+        old_serial = old_result
         is_valid, result = validate_serial(replacement.new_serial)
         if not is_valid:
             raise HTTPException(status_code=400, detail=result)
@@ -1645,7 +1653,10 @@ async def remove_device(serial: str):
     
     try:
         # Parse serial
-        serial_clean = parse_serial_input(serial)
+        is_valid, result = validate_serial(serial)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=result)
+        serial_clean = result
         
         # Demo mode - remove from DEMO_ZONES
         if DEMO_MODE:
@@ -1695,7 +1706,10 @@ async def move_device(serial: str, move: DeviceMove):
         raise HTTPException(status_code=503, detail="Hub not connected")
 
     try:
-        serial_clean = parse_serial_input(serial)
+        is_valid, result = validate_serial(serial)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=result)
+        serial_clean = result
 
         # Demo mode - move between DEMO_ZONES
         if DEMO_MODE:
