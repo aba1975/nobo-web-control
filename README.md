@@ -150,7 +150,7 @@ The system automatically detects device types from serial number prefixes:
 - Blue badge in the UI
 
 **2. Nobø R80 RDC 700 (Panel Heater Receiver) - Serial prefix: 160**
-- Mode control only: can switch between Comfort/Eco/Away/Off remotely
+- Mode control only: can switch between Comfort/Eco/Away remotely
 - Temperature is set **manually on the physical dial on the heater** — cannot be adjusted remotely
 - UI shows: mode buttons only, NO temperature +/- controls
 - Displays a notice: "Comfort & Eco temperatures are adjusted manually on the device"
@@ -184,7 +184,7 @@ python server.py --demo
 - ✅ Shows 7 realistic zones with grouped rooms
 - ✅ All zones with different device types (NTB-2R and R80 RDC 700)
 - ✅ Realistic Norwegian indoor temperatures with slight variations
-- ✅ All modes work (Comfort, Eco, Away, Off, Schedule)
+- ✅ All modes work (Comfort, Eco, Away, Schedule)
 - ✅ Temperature adjustments work for NTB-2R zones
 - ✅ Schedule editor with sample weekly profiles
 - ✅ Device management (add/remove/replace devices)
