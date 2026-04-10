@@ -423,7 +423,6 @@ This project is provided as-is for personal use. Please check the license for de
 
 - Built with [FastAPI](https://fastapi.tiangolo.com/)
 - Uses [pynobo](https://github.com/echoromeo/pynobo) library for Nobø Hub communication
-- UI design inspired by the Mill heating app
 - Created for local control of Nobø Energy Hub heating systems
 
 ## Support
