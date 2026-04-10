@@ -34,6 +34,30 @@
                     <span class="status-dot" id="statusDot" aria-hidden="true"></span>
                     <span class="status-text" id="statusText">Connecting...</span>
                 </div>
+                <!-- User menu -->
+                <div class="user-menu-wrapper" id="userMenuWrapper">
+                    <button id="userMenuBtn" class="user-menu-btn" aria-label="User menu" aria-haspopup="true" aria-expanded="false" onclick="toggleUserMenu()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="20" height="20">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </button>
+                    <div id="userDropdown" class="user-dropdown" role="menu" aria-hidden="true">
+                        <div class="user-dropdown-header">
+                            <span id="userMenuName" class="user-dropdown-name">–</span>
+                        </div>
+                        <div class="user-dropdown-divider"></div>
+                        <button class="user-dropdown-item" role="menuitem" onclick="openChangePasswordModal()">🔑 Change Password</button>
+                        <button class="user-dropdown-item" role="menuitem" onclick="openRenameModal()">✏️ Rename Account</button>
+                        <div id="adminMenuItems" style="display:none">
+                            <div class="user-dropdown-divider"></div>
+                            <button class="user-dropdown-item" role="menuitem" onclick="openAddUserModal()">➕ Add User</button>
+                            <button class="user-dropdown-item" role="menuitem" onclick="openManageUsersModal()">👥 Manage Users</button>
+                        </div>
+                        <div class="user-dropdown-divider"></div>
+                        <button class="user-dropdown-item user-dropdown-logout" role="menuitem" onclick="doLogout()">🚪 Logout</button>
+                    </div>
+                </div>
                 <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark/light theme">
                     <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="5"></circle>
@@ -255,6 +279,102 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeMoveDeviceModal()">Cancel</button>
                 <button class="btn btn-primary" onclick="confirmMoveDevice()">Move</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="changePasswordModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>Change Password</h2>
+                <button class="modal-close" onclick="closeChangePasswordModal()" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="changePasswordError" class="form-error" style="display:none"></div>
+                <div class="form-group">
+                    <label for="cpCurrentPassword">Current Password</label>
+                    <input type="password" id="cpCurrentPassword" class="form-control" autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="cpNewPassword">New Password</label>
+                    <input type="password" id="cpNewPassword" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="cpConfirmPassword">Confirm New Password</label>
+                    <input type="password" id="cpConfirmPassword" class="form-control" autocomplete="new-password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitChangePassword()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Account Modal -->
+    <div id="renameModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>Rename Account</h2>
+                <button class="modal-close" onclick="closeRenameModal()" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="renameError" class="form-error" style="display:none"></div>
+                <div class="form-group">
+                    <label for="renameNewUsername">New Username</label>
+                    <input type="text" id="renameNewUsername" class="form-control" autocomplete="username">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeRenameModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitRename()">Rename</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal (admin) -->
+    <div id="addUserModal" class="modal">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">
+                <h2>Add User</h2>
+                <button class="modal-close" onclick="closeAddUserModal()" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="addUserError" class="form-error" style="display:none"></div>
+                <div class="form-group">
+                    <label for="addUserUsername">Username</label>
+                    <input type="text" id="addUserUsername" class="form-control" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="addUserPassword">Password</label>
+                    <input type="password" id="addUserPassword" class="form-control" autocomplete="new-password">
+                </div>
+                <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;">
+                    <input type="checkbox" id="addUserIsAdmin" style="width:auto;">
+                    <label for="addUserIsAdmin" style="margin-bottom:0;">Admin</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddUserModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitAddUser()">Add User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Users Modal (admin) -->
+    <div id="manageUsersModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Manage Users</h2>
+                <button class="modal-close" onclick="closeManageUsersModal()" aria-label="Close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="manageUsersError" class="form-error" style="display:none"></div>
+                <div id="manageUsersList"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeManageUsersModal()">Close</button>
             </div>
         </div>
     </div>

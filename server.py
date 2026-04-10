@@ -13,11 +13,12 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Response, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 import pynobo
+import auth as _auth
 
 # Configure logging
 logging.basicConfig(
@@ -1839,6 +1840,301 @@ async def read_root():
         return HTMLResponse(content=content)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>Error: index.html not found</h1>", status_code=404)
+
+
+
+# ===== Authentication Middleware =====
+# Intercepts GET / only — API endpoints remain unprotected.
+@app.middleware("http")
+async def _ui_auth_middleware(request: Request, call_next):
+    if request.method == "GET" and request.url.path == "/":
+        token = request.cookies.get(_auth.COOKIE_NAME)
+        username = _auth.verify_session_token(token) if token else None
+        if not username:
+            return RedirectResponse(url="/login", status_code=302)
+    return await call_next(request)
+
+
+# ===== Login Page HTML =====
+_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login – Nobø Web Control</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f8f9fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      color: #2c3e50;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.12);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 380px;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2c3e50;
+      margin-bottom: 0.25rem;
+    }
+    .subtitle {
+      font-size: 0.875rem;
+      color: #7f8c8d;
+      margin-bottom: 1.75rem;
+    }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.35rem;
+      color: #34495e;
+    }
+    input[type=text], input[type=password] {
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      border: 1.5px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: 1rem;
+    }
+    input:focus { border-color: #ff6b35; }
+    .btn {
+      width: 100%;
+      padding: 0.75rem;
+      background: #ff6b35;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .btn:hover { background: #e55a25; }
+    .error {
+      background: #fdecea;
+      color: #c0392b;
+      border-radius: 8px;
+      padding: 0.625rem 0.875rem;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Nobø Web Control</div>
+    <div class="subtitle">Sign in to continue</div>
+    {error_block}
+    <form method="post" action="/login">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>"""
+
+
+# ===== Auth Routes =====
+
+@app.get("/login")
+async def login_page(request: Request):
+    """Serve the login page. Redirect to / if already authenticated."""
+    token = request.cookies.get(_auth.COOKIE_NAME)
+    if _auth.verify_session_token(token):
+        return RedirectResponse(url="/", status_code=302)
+    html = _LOGIN_HTML.replace("{error_block}", "")
+    return HTMLResponse(content=html)
+
+
+@app.post("/login")
+async def login_submit(
+    response: Response,
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    """Validate credentials and set session cookie."""
+    canonical = _auth.authenticate_user(username, password)
+    if canonical is not None:
+        token = _auth.create_session_token(canonical)
+        redirect = RedirectResponse(url="/", status_code=302)
+        redirect.set_cookie(
+            key=_auth.COOKIE_NAME,
+            value=token,
+            httponly=True,
+            max_age=_auth.SESSION_DURATION_HOURS * 3600,
+            samesite="lax",
+        )
+        return redirect
+    error_block = '<div class="error">Invalid username or password.</div>'
+    html = _LOGIN_HTML.replace("{error_block}", error_block)
+    return HTMLResponse(content=html, status_code=401)
+
+
+@app.post("/logout")
+async def logout():
+    """Clear session cookie and redirect to login."""
+    redirect = RedirectResponse(url="/login", status_code=302)
+    redirect.delete_cookie(key=_auth.COOKIE_NAME)
+    return redirect
+
+
+# ===== Helper: get current user from request =====
+def _get_current_user(request: Request) -> dict | None:
+    token = request.cookies.get(_auth.COOKIE_NAME)
+    if not token:
+        return None
+    username = _auth.verify_session_token(token)
+    if not username:
+        return None
+    return _auth.get_user(username)
+
+
+# ===== Auth — Current User Info =====
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Return current authenticated user info."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+# ===== Auth — Self-Service (any logged-in user) =====
+
+class _PasswordChangeBody(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class _RenameBody(BaseModel):
+    new_username: str
+
+
+@app.post("/auth/users/me/password")
+async def change_own_password(request: Request, body: _PasswordChangeBody):
+    """Change the current user's own password."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    ok, msg = _auth.change_password(
+        user["username"], body.current_password, body.new_password, body.confirm_password
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+@app.put("/auth/users/me/rename")
+async def rename_self(request: Request, body: _RenameBody):
+    """Rename the current user's own account."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    ok, msg = _auth.rename_user(user["username"], body.new_username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    # Invalidate old cookie so user logs in again with new name
+    redirect = JSONResponse(content={"status": "success", "message": msg, "logout": True})
+    redirect.delete_cookie(key=_auth.COOKIE_NAME)
+    return redirect
+
+
+# ===== Auth — Admin User Management =====
+
+class _AddUserBody(BaseModel):
+    username: str
+    password: str
+    is_admin: bool = False
+
+
+class _AdminPasswordBody(BaseModel):
+    new_password: str
+    confirm_password: str
+
+
+@app.post("/auth/users")
+async def admin_add_user(request: Request, body: _AddUserBody):
+    """Admin: add a new user."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    ok, msg = _auth.add_user(body.username, body.password, body.is_admin)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+@app.put("/auth/users/{username}")
+async def admin_rename_user(request: Request, username: str, body: _RenameBody):
+    """Admin: rename any user."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    ok, msg = _auth.rename_user(username, body.new_username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+@app.delete("/auth/users/{username}")
+async def admin_delete_user(request: Request, username: str):
+    """Admin: delete a user (cannot delete the last admin)."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    ok, msg = _auth.delete_user(username)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+@app.post("/auth/users/{username}/password")
+async def admin_change_user_password(request: Request, username: str, body: _AdminPasswordBody):
+    """Admin: change any user's password without requiring current password."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    ok, msg = _auth.admin_change_password(username, body.new_password, body.confirm_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"status": "success", "message": msg}
+
+
+@app.get("/auth/users")
+async def admin_list_users(request: Request):
+    """Admin: list all users."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not user["is_admin"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return {"users": _auth.list_users()}
 
 
 # ===== Main Entry Point =====

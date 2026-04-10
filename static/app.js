@@ -2106,3 +2106,260 @@ window.loadLogPage = loadLogPage;
 window.setLogFilter = setLogFilter;
 window.toggleLogAutoRefresh = toggleLogAutoRefresh;
 window.clearLog = clearLog;
+
+
+// ===== User Menu =====
+
+let _currentUser = null;
+
+async function loadCurrentUser() {
+    try {
+        const r = await fetch('/auth/me');
+        if (r.ok) {
+            _currentUser = await r.json();
+            const nameEl = document.getElementById('userMenuName');
+            if (nameEl) nameEl.textContent = _currentUser.username;
+            const adminItems = document.getElementById('adminMenuItems');
+            if (adminItems) adminItems.style.display = _currentUser.is_admin ? '' : 'none';
+        }
+    } catch (err) { console.error('Failed to load current user:', err); }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('userDropdown');
+    const btn = document.getElementById('userMenuBtn');
+    if (!dropdown) return;
+    const isOpen = dropdown.classList.toggle('open');
+    btn.setAttribute('aria-expanded', String(isOpen));
+    dropdown.setAttribute('aria-hidden', String(!isOpen));
+}
+
+// Close user dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('userMenuWrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        const dropdown = document.getElementById('userDropdown');
+        const btn = document.getElementById('userMenuBtn');
+        if (dropdown) { dropdown.classList.remove('open'); dropdown.setAttribute('aria-hidden', 'true'); }
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+});
+
+function _closeUserDropdown() {
+    const dropdown = document.getElementById('userDropdown');
+    const btn = document.getElementById('userMenuBtn');
+    if (dropdown) { dropdown.classList.remove('open'); dropdown.setAttribute('aria-hidden', 'true'); }
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+async function doLogout() {
+    _closeUserDropdown();
+    await fetch('/logout', { method: 'POST' });
+    window.location.href = '/login';
+}
+
+// ===== Change Password Modal =====
+
+function openChangePasswordModal() {
+    _closeUserDropdown();
+    document.getElementById('cpCurrentPassword').value = '';
+    document.getElementById('cpNewPassword').value = '';
+    document.getElementById('cpConfirmPassword').value = '';
+    document.getElementById('changePasswordError').style.display = 'none';
+    document.getElementById('changePasswordModal').classList.add('active');
+}
+
+function closeChangePasswordModal() {
+    document.getElementById('changePasswordModal').classList.remove('active');
+}
+
+async function submitChangePassword() {
+    const errorEl = document.getElementById('changePasswordError');
+    const current = document.getElementById('cpCurrentPassword').value;
+    const newPw = document.getElementById('cpNewPassword').value;
+    const confirm = document.getElementById('cpConfirmPassword').value;
+    errorEl.style.display = 'none';
+    try {
+        const r = await fetch('/auth/users/me/password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: current, new_password: newPw, confirm_password: confirm })
+        });
+        if (r.ok) {
+            closeChangePasswordModal();
+            showToast('Password changed successfully.', 'success');
+        } else {
+            const data = await r.json();
+            errorEl.textContent = data.detail || 'Error changing password.';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Change password request failed:', err);
+        errorEl.textContent = 'Network error.';
+        errorEl.style.display = 'block';
+    }
+}
+
+// ===== Rename Account Modal =====
+
+function openRenameModal() {
+    _closeUserDropdown();
+    document.getElementById('renameNewUsername').value = _currentUser ? _currentUser.username : '';
+    document.getElementById('renameError').style.display = 'none';
+    document.getElementById('renameModal').classList.add('active');
+}
+
+function closeRenameModal() {
+    document.getElementById('renameModal').classList.remove('active');
+}
+
+async function submitRename() {
+    const errorEl = document.getElementById('renameError');
+    const newName = document.getElementById('renameNewUsername').value;
+    errorEl.style.display = 'none';
+    try {
+        const r = await fetch('/auth/users/me/rename', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_username: newName })
+        });
+        if (r.ok) {
+            closeRenameModal();
+            // Redirect to login after server invalidates the session cookie
+            window.location.href = '/login';
+        } else {
+            const data = await r.json();
+            errorEl.textContent = data.detail || 'Error renaming account.';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Rename request failed:', err);
+        errorEl.textContent = 'Network error.';
+        errorEl.style.display = 'block';
+    }
+}
+
+// ===== Add User Modal (admin) =====
+
+function openAddUserModal() {
+    _closeUserDropdown();
+    document.getElementById('addUserUsername').value = '';
+    document.getElementById('addUserPassword').value = '';
+    document.getElementById('addUserIsAdmin').checked = false;
+    document.getElementById('addUserError').style.display = 'none';
+    document.getElementById('addUserModal').classList.add('active');
+}
+
+function closeAddUserModal() {
+    document.getElementById('addUserModal').classList.remove('active');
+}
+
+async function submitAddUser() {
+    const errorEl = document.getElementById('addUserError');
+    const username = document.getElementById('addUserUsername').value;
+    const password = document.getElementById('addUserPassword').value;
+    const isAdmin = document.getElementById('addUserIsAdmin').checked;
+    errorEl.style.display = 'none';
+    try {
+        const r = await fetch('/auth/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, is_admin: isAdmin })
+        });
+        if (r.ok) {
+            closeAddUserModal();
+            showToast('User added successfully.', 'success');
+        } else {
+            const data = await r.json();
+            errorEl.textContent = data.detail || 'Error adding user.';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Add user request failed:', err);
+        errorEl.textContent = 'Network error.';
+        errorEl.style.display = 'block';
+    }
+}
+
+// ===== Manage Users Modal (admin) =====
+
+async function openManageUsersModal() {
+    _closeUserDropdown();
+    document.getElementById('manageUsersError').style.display = 'none';
+    document.getElementById('manageUsersList').innerHTML = '<p style="color:var(--color-text-secondary)">Loading…</p>';
+    document.getElementById('manageUsersModal').classList.add('active');
+    await refreshManageUsersList();
+}
+
+function closeManageUsersModal() {
+    document.getElementById('manageUsersModal').classList.remove('active');
+}
+
+async function refreshManageUsersList() {
+    const listEl = document.getElementById('manageUsersList');
+    try {
+        const r = await fetch('/auth/users');
+        if (!r.ok) throw new Error('Failed to load users');
+        const data = await r.json();
+        listEl.innerHTML = '';
+        data.users.forEach(u => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--color-border);gap:0.5rem;';
+            const info = document.createElement('span');
+            info.style.fontSize = '0.9rem';
+            info.textContent = u.username + (u.is_admin ? ' 👑' : '');
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;gap:0.4rem;flex-shrink:0;';
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-secondary';
+            delBtn.style.cssText = 'padding:0.25rem 0.6rem;font-size:0.8rem;';
+            delBtn.textContent = '🗑 Delete';
+            delBtn.onclick = () => adminDeleteUser(u.username);
+            actions.appendChild(delBtn);
+            row.appendChild(info);
+            row.appendChild(actions);
+            listEl.appendChild(row);
+        });
+    } catch (e) {
+        listEl.innerHTML = '<p style="color:var(--color-error)">Failed to load users.</p>';
+    }
+}
+
+async function adminDeleteUser(username) {
+    if (!confirm(`Delete user "${username}"?`)) return;
+    const errorEl = document.getElementById('manageUsersError');
+    errorEl.style.display = 'none';
+    try {
+        const r = await fetch(`/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+        if (r.ok) {
+            showToast(`User "${username}" deleted.`, 'success');
+            await refreshManageUsersList();
+        } else {
+            const data = await r.json();
+            errorEl.textContent = data.detail || 'Error deleting user.';
+            errorEl.style.display = 'block';
+        }
+    } catch (err) {
+        console.error('Delete user request failed:', err);
+        errorEl.textContent = 'Network error.';
+        errorEl.style.display = 'block';
+    }
+}
+
+// ===== Init user menu on page load =====
+window.addEventListener('DOMContentLoaded', loadCurrentUser);
+
+window.toggleUserMenu = toggleUserMenu;
+window.doLogout = doLogout;
+window.openChangePasswordModal = openChangePasswordModal;
+window.closeChangePasswordModal = closeChangePasswordModal;
+window.submitChangePassword = submitChangePassword;
+window.openRenameModal = openRenameModal;
+window.closeRenameModal = closeRenameModal;
+window.submitRename = submitRename;
+window.openAddUserModal = openAddUserModal;
+window.closeAddUserModal = closeAddUserModal;
+window.submitAddUser = submitAddUser;
+window.openManageUsersModal = openManageUsersModal;
+window.closeManageUsersModal = closeManageUsersModal;
+window.adminDeleteUser = adminDeleteUser;

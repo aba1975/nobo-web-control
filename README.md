@@ -408,8 +408,52 @@ The design uses CSS custom properties (variables) defined in `style.css`, making
 ## Security Considerations
 
 - This server should only be run on a trusted local network
-- There is no authentication - anyone with network access can control your heating
 - Do not expose this server to the internet without proper security measures
+
+## Authentication
+
+The web interface is protected by a simple username/password login system.
+
+### Default credentials
+
+| Username | Password |
+|----------|----------|
+| `admin`  | `nobohub` |
+
+> ⚠️ **Change the default password immediately after first login.**
+
+### Logging in
+
+1. Open the web interface at `http://localhost:8000`
+2. You will be redirected to `/login` automatically
+3. Enter your username and password and click **Sign in**
+4. Sessions last 24 hours; you will be logged out automatically after that
+
+### Changing your password
+
+1. Click the **user icon** (👤) in the top-right corner of the header
+2. Select **Change Password**
+3. Enter your current password, new password, and confirm the new password
+4. Click **Save**
+
+### Renaming your account
+
+1. Click the user icon → **Rename Account**
+2. Enter a new username and click **Rename**
+3. You will be logged out and must sign in with the new username
+
+### Managing users (admin only)
+
+Admin users see additional options in the user menu:
+
+- **Add User** — create a new user account (optionally admin)
+- **Manage Users** — view and delete existing users
+
+> Note: The last remaining admin account cannot be deleted.
+
+### User storage
+
+User accounts are stored in `data/users.json` (auto-created on first run, excluded from version control). Passwords are hashed with **bcrypt** and are never stored in plain text. Session cookies are HMAC-signed and HTTP-only.
 
 ## Contributing
 

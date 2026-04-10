@@ -45,3 +45,6 @@ Thumbs.db
 # Backup files
 *.backup
 *-old.js
+
+# User data and session secrets (auto-generated at runtime)
+data/
