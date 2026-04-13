@@ -132,8 +132,12 @@ try {
             Write-Host "  [OK] Created parent directory: $parentDir" -ForegroundColor Green
         }
         Write-Host "  Cloning $RepoUrl into $InstallDir ..." -ForegroundColor Cyan
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
         $cloneOutput = & git clone $RepoUrl $InstallDir 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)`n$cloneOutput" }
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldEAP
+        if ($exitCode -ne 0) { throw "git clone failed (exit code $exitCode)`n$cloneOutput" }
         Write-Host $cloneOutput -ForegroundColor DarkGray
         Write-Host "  [OK] Clone complete." -ForegroundColor Green
     }
@@ -142,19 +146,31 @@ try {
     Set-Location $InstallDir
 
     Write-Host "  Fetching branch: $Branch ..." -ForegroundColor Cyan
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
     $fetchOutput = & git fetch origin $Branch 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "git fetch failed (exit code $LASTEXITCODE)`n$fetchOutput" }
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldEAP
+    if ($exitCode -ne 0) { throw "git fetch failed (exit code $exitCode)`n$fetchOutput" }
     Write-Host $fetchOutput -ForegroundColor DarkGray
 
     Write-Host "  Checking out: $Branch ..." -ForegroundColor Cyan
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
     $checkoutOutput = & git checkout $Branch 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "git checkout failed (exit code $LASTEXITCODE)`n$checkoutOutput" }
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldEAP
+    if ($exitCode -ne 0) { throw "git checkout failed (exit code $exitCode)`n$checkoutOutput" }
     Write-Host $checkoutOutput -ForegroundColor DarkGray
 
     # Pull latest changes
     Write-Host "  Pulling latest changes..." -ForegroundColor Cyan
+    $oldEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
     $pullOutput = & git pull origin $Branch 2>&1 | Out-String
-    if ($LASTEXITCODE -ne 0) { throw "git pull failed (exit code $LASTEXITCODE)`n$pullOutput" }
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $oldEAP
+    if ($exitCode -ne 0) { throw "git pull failed (exit code $exitCode)`n$pullOutput" }
     Write-Host $pullOutput -ForegroundColor DarkGray
 
     Write-Host "  [OK] Branch '$Branch' checked out and up to date." -ForegroundColor Green
@@ -232,9 +248,13 @@ $reqFile = Join-Path $InstallDir "requirements.txt"
 try {
     if (Test-Path $reqFile) {
         Write-Host "  Installing from requirements.txt ..." -ForegroundColor Cyan
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
         $pipOutput = & pip install -r $reqFile 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+        $ErrorActionPreference = $oldEAP
         Write-Host $pipOutput -ForegroundColor DarkGray
-        if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed" }
+        if ($exitCode -ne 0) { throw "pip install -r requirements.txt failed" }
     } else {
         # Fallback: install packages individually with minimum version requirements
         Write-Host "  requirements.txt not found — installing packages individually ..." -ForegroundColor Yellow
@@ -247,9 +267,13 @@ try {
         )
         foreach ($pkg in $packages) {
             Write-Host "  Installing $pkg ..." -ForegroundColor Cyan
+            $oldEAP = $ErrorActionPreference
+            $ErrorActionPreference = 'SilentlyContinue'
             $pkgOutput = & pip install $pkg 2>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+            $ErrorActionPreference = $oldEAP
             Write-Host $pkgOutput -ForegroundColor DarkGray
-            if ($LASTEXITCODE -ne 0) { Write-Host "  [WARN] Failed to install $pkg" -ForegroundColor Yellow }
+            if ($exitCode -ne 0) { Write-Host "  [WARN] Failed to install $pkg" -ForegroundColor Yellow }
         }
     }
     Write-Host "  [OK] Dependencies installed." -ForegroundColor Green
@@ -403,6 +427,7 @@ Write-Host "  Press Ctrl+C to stop the server.`n" -ForegroundColor Yellow
 
 # Start the server (blocking — runs until Ctrl+C)
 $venvPython = Join-Path $InstallDir "venv\Scripts\python.exe"
+$ErrorActionPreference = 'SilentlyContinue'
 if (Test-Path $venvPython) {
     & $venvPython server.py 2>&1
 } elseif ($PythonExe) {
@@ -438,6 +463,7 @@ Set-Location "$InstallDir"
 
 Write-Host "Starting Nobø Web Control on port $ServerPort ..." -ForegroundColor Cyan
 Start-Process "http://localhost:$ServerPort"
+`$ErrorActionPreference = 'SilentlyContinue'
 & "$InstallDir\venv\Scripts\python.exe" server.py 2>&1
 "@
 
