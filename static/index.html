@@ -34,6 +34,12 @@
                     <span class="status-dot" id="statusDot" aria-hidden="true"></span>
                     <span class="status-text" id="statusText">Connecting...</span>
                 </div>
+                <button id="userMenuBtn" class="theme-toggle" aria-label="User menu" onclick="toggleUserPanel()">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </button>
                 <button id="themeToggle" class="theme-toggle" aria-label="Toggle dark/light theme">
                     <svg class="theme-icon sun-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <circle cx="12" cy="12" r="5"></circle>
@@ -259,6 +265,20 @@
         </div>
     </div>
 
+    <!-- User Settings Panel -->
+    <div id="userPanel" class="modal" role="dialog" aria-modal="true" aria-labelledby="userPanelTitle">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h2 id="userPanelTitle">👤 User Settings</h2>
+                <button class="modal-close" onclick="closeUserPanel()" aria-label="Close user settings">✕</button>
+            </div>
+            <div class="modal-body" id="userPanelBody">
+                <!-- Populated by auth.js -->
+            </div>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
+    <script src="/static/auth.js"></script>
 </body>
 </html>

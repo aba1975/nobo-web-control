@@ -411,7 +411,61 @@ The design uses CSS custom properties (variables) defined in `style.css`, making
 - There is no authentication - anyone with network access can control your heating
 - Do not expose this server to the internet without proper security measures
 
-## Contributing
+## Authentication
+
+The web interface is protected by a session-based authentication layer.
+
+### Default Credentials
+
+| Username | Password  |
+|----------|-----------|
+| `admin`  | `nobohub` |
+
+> **Change the default password immediately** after first login via the 👤 user icon in the top-right corner.
+
+### Changing the Admin Password
+
+1. Log in with the default credentials.
+2. Click the **👤** icon in the upper-right corner of the UI.
+3. Expand **🔑 Change Password** and enter your current password, then your new password twice.
+
+### User Management (Admin)
+
+Clicking the 👤 icon and expanding **🛠️ Manage Users** lets you:
+- **Add** new users with a username, password, and role (`user` or `admin`).
+- **Delete** users (you cannot delete your own account).
+
+Non-admin users can change their own password and rename their username.
+
+### Where User Data is Stored
+
+User accounts are stored in `data/users.json` as a JSON file with bcrypt-hashed passwords.  
+The `data/` directory is created automatically on first run and is excluded from version control.
+
+```json
+{
+  "admin": {
+    "password_hash": "$2b$12$...",
+    "role": "admin"
+  }
+}
+```
+
+### Security Notes
+
+- **Passwords** are stored using bcrypt with a per-password salt — no plaintext is ever written to disk.
+- **Session cookies** are `HttpOnly` (not accessible to JavaScript) and `SameSite=Lax` to mitigate CSRF. When the server is accessed over HTTPS, cookies are also marked `Secure`.
+- **Brute-force protection**: after 5 consecutive failed login attempts for a username, that username is locked out for 60 seconds.
+- **API and WebSocket endpoints** (`/api/*`, `/ws`) remain unauthenticated so that local integrations (e.g. Home Assistant, scripts) continue to work without modification.
+- For production deployments, place the server behind a reverse proxy (e.g. nginx) with a valid TLS certificate and set `SESSION_SECRET` as an environment variable.
+
+### Environment Variables
+
+| Variable         | Default                    | Description                                      |
+|------------------|----------------------------|--------------------------------------------------|
+| `SESSION_SECRET` | random (new on each start) | Secret used to sign sessions (set for stability) |
+
+
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
