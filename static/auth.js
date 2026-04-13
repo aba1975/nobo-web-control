@@ -20,17 +20,17 @@ let _currentUser = null;
 
 function toggleUserPanel() {
     const panel = document.getElementById('userPanel');
-    if (panel.classList.contains('active')) {
+    if (panel.classList.contains('show')) {
         closeUserPanel();
     } else {
         renderUserPanel();
-        panel.classList.add('active');
+        panel.classList.add('show');
     }
 }
 
 function closeUserPanel() {
     const panel = document.getElementById('userPanel');
-    panel.classList.remove('active');
+    panel.classList.remove('show');
 }
 
 // Close panel when clicking the backdrop
