@@ -57,7 +57,7 @@ def client():
 
 
 def _login(client, username="admin", password="nobohub"):
-    """Helper: POST /auth/login and return the response."""
+    """POST /auth/login with form-encoded credentials and return the response."""
     return client.post(
         "/auth/login",
         data={"username": username, "password": password},

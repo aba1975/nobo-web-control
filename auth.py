@@ -76,10 +76,12 @@ def save_users(users: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def hash_password(password: str) -> str:
+    """Hash a plaintext password with bcrypt and return the hash string."""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
+    """Return True if *password* matches the bcrypt *hashed* value."""
     try:
         return bcrypt.checkpw(password.encode(), hashed.encode())
     except Exception:
