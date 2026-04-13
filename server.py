@@ -16,8 +16,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import pynobo
+import auth
 
 # Configure logging
 logging.basicConfig(
@@ -317,6 +320,39 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Nobø Web Control", version="1.0.0", lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# Authentication — initialise user store and attach middleware
+# ---------------------------------------------------------------------------
+auth.init_user_store()
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Gate / and /static/* behind session auth; leave all other paths open."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        # Exempt: API, WebSocket, login page, auth endpoints, favicon
+        if (
+            path.startswith("/api/")
+            or path == "/ws"
+            or path == "/login"
+            or path.startswith("/auth/")
+            or path == "/favicon.ico"
+        ):
+            return await call_next(request)
+
+        # Protect: root UI and static assets
+        if path == "/" or path.startswith("/static/"):
+            session_id = request.cookies.get("session_id")
+            session = auth.get_session(session_id) if session_id else None
+            if not session:
+                return RedirectResponse(url="/login", status_code=302)
+
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
 
 
 # ===== Pydantic Models =====
@@ -1837,6 +1873,316 @@ async def websocket_endpoint(websocket: WebSocket):
                 connected_websockets.remove(websocket)
             total = len(connected_websockets)
         logger.info(f"WebSocket client disconnected. Total clients: {total}")
+
+
+# ===== Authentication Endpoints =====
+
+# Inline login-page HTML — served directly (not via /static) to avoid auth loop
+_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nobø Control — Login</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #1a1a2e; --card: #16213e; --border: #0f3460;
+    --accent: #e94560; --text: #eee; --muted: #aaa;
+    --input-bg: #0f3460; --radius: 8px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 2rem; width: 100%; max-width: 380px; }
+  h1 { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; }
+  .form-group { margin-bottom: 1rem; }
+  label { display: block; margin-bottom: .4rem; font-size: .875rem; color: var(--muted); }
+  input { width: 100%; padding: .6rem .8rem; background: var(--input-bg);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-size: 1rem; }
+  input:focus { outline: 2px solid var(--accent); }
+  button { width: 100%; margin-top: .5rem; padding: .75rem;
+    background: var(--accent); color: #fff; font-size: 1rem; font-weight: 600;
+    border: none; border-radius: var(--radius); cursor: pointer; }
+  button:hover { opacity: .9; }
+  .error { background: rgba(233,69,96,.15); border: 1px solid var(--accent);
+    color: var(--accent); border-radius: var(--radius); padding: .6rem .8rem;
+    margin-bottom: 1rem; font-size: .875rem; display: none; }
+  .error.show { display: block; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🔒 Nobø Control</h1>
+  <div class="error" id="errorMsg"></div>
+  <form id="loginForm">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = document.getElementById('errorMsg');
+  err.classList.remove('show');
+  const body = new URLSearchParams({
+    username: document.getElementById('username').value,
+    password: document.getElementById('password').value,
+  });
+  try {
+    const r = await fetch('/auth/login', { method: 'POST', body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    if (r.ok) {
+      window.location.href = '/';
+    } else {
+      const data = await r.json().catch(() => ({}));
+      err.textContent = data.detail || 'Login failed';
+      err.classList.add('show');
+    }
+  } catch {
+    err.textContent = 'Network error — please try again.';
+    err.classList.add('show');
+  }
+});
+</script>
+</body>
+</html>"""
+
+
+def _get_session_or_401(request: Request) -> dict:
+    """Return session dict or raise HTTP 401."""
+    session_id = request.cookies.get("session_id")
+    session = auth.get_session(session_id) if session_id else None
+    if not session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return session
+
+
+def _require_admin(session: dict) -> None:
+    users = auth.load_users()
+    user = users.get(session["username"], {})
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+@app.get("/login")
+async def login_page():
+    """Serve the login HTML page (exempt from auth middleware)."""
+    return HTMLResponse(content=_LOGIN_HTML)
+
+
+@app.post("/auth/login")
+async def auth_login(request: Request):
+    """Validate credentials, create session, set cookie."""
+    form = await request.form()
+    username = str(form.get("username", "")).strip()
+    password = str(form.get("password", ""))
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+
+    # Rate-limit by username
+    allowed, wait = auth.check_rate_limit(username)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {wait} seconds.",
+        )
+
+    users = auth.load_users()
+    user = users.get(username)
+    if not user or not auth.verify_password(password, user["password_hash"]):
+        auth.record_failed_attempt(username)
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    auth.clear_attempts(username)
+    session_id = auth.create_session(username)
+
+    is_https = (
+        request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    )
+    response = JSONResponse(
+        {"username": username, "role": user.get("role", "user")}
+    )
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        secure=is_https,
+        max_age=86400,
+        path="/",
+    )
+    return response
+
+
+@app.post("/auth/logout")
+async def auth_logout(request: Request):
+    """Invalidate session and clear cookie."""
+    session_id = request.cookies.get("session_id")
+    if session_id:
+        auth.delete_session(session_id)
+    response = JSONResponse({"status": "logged out"})
+    response.delete_cookie(key="session_id", path="/")
+    return response
+
+
+@app.get("/auth/me")
+async def auth_me(request: Request):
+    """Return info about the currently authenticated user."""
+    session = _get_session_or_401(request)
+    users = auth.load_users()
+    user = users.get(session["username"], {})
+    return {"username": session["username"], "role": user.get("role", "user")}
+
+
+@app.post("/auth/change-password")
+async def auth_change_password(request: Request):
+    """Change the current user's password (requires new password confirmed twice)."""
+    session = _get_session_or_401(request)
+    data = await request.json()
+    current = data.get("current_password", "")
+    new_pw = data.get("new_password", "")
+    confirm = data.get("confirm_password", "")
+
+    if not current or not new_pw or not confirm:
+        raise HTTPException(status_code=400, detail="All password fields are required")
+    if new_pw != confirm:
+        raise HTTPException(status_code=400, detail="New passwords do not match")
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    users = auth.load_users()
+    username = session["username"]
+    user = users.get(username)
+    if not user or not auth.verify_password(current, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    users[username]["password_hash"] = auth.hash_password(new_pw)
+    auth.save_users(users)
+    return {"status": "password changed"}
+
+
+@app.post("/auth/rename")
+async def auth_rename(request: Request):
+    """Rename the current user's username."""
+    session = _get_session_or_401(request)
+    data = await request.json()
+    new_name = str(data.get("new_username", "")).strip()
+
+    if not new_name:
+        raise HTTPException(status_code=400, detail="New username is required")
+    if len(new_name) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
+
+    users = auth.load_users()
+    old_name = session["username"]
+
+    if new_name == old_name:
+        return {"status": "no change"}
+    if new_name in users:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    users[new_name] = users.pop(old_name)
+    auth.save_users(users)
+
+    # Update the active session
+    session["username"] = new_name
+    return {"status": "renamed", "username": new_name}
+
+
+# ----- Admin-only endpoints -----
+
+@app.get("/auth/admin/users")
+async def admin_list_users(request: Request):
+    """List all users (admin only)."""
+    session = _get_session_or_401(request)
+    _require_admin(session)
+    users = auth.load_users()
+    return [
+        {"username": u, "role": info.get("role", "user")}
+        for u, info in users.items()
+    ]
+
+
+@app.post("/auth/admin/users")
+async def admin_add_user(request: Request):
+    """Add a new user (admin only)."""
+    session = _get_session_or_401(request)
+    _require_admin(session)
+    data = await request.json()
+    username = str(data.get("username", "")).strip()
+    password = str(data.get("password", ""))
+    role = str(data.get("role", "user"))
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if role not in ("admin", "user"):
+        role = "user"
+
+    users = auth.load_users()
+    if username in users:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    users[username] = {"password_hash": auth.hash_password(password), "role": role}
+    auth.save_users(users)
+    return {"status": "created", "username": username}
+
+
+@app.patch("/auth/admin/users/{username}")
+async def admin_update_user(request: Request, username: str):
+    """Rename a user or change their role (admin only)."""
+    session = _get_session_or_401(request)
+    _require_admin(session)
+    data = await request.json()
+
+    users = auth.load_users()
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    new_name = str(data.get("new_username", "")).strip() or None
+    new_role = data.get("role")
+
+    if new_name and new_name != username:
+        if new_name in users:
+            raise HTTPException(status_code=409, detail="Username already exists")
+        users[new_name] = users.pop(username)
+        username = new_name
+
+    if new_role in ("admin", "user"):
+        users[username]["role"] = new_role
+
+    auth.save_users(users)
+    return {"status": "updated", "username": username}
+
+
+@app.delete("/auth/admin/users/{username}")
+async def admin_delete_user(request: Request, username: str):
+    """Delete a user (admin only; cannot delete yourself)."""
+    session = _get_session_or_401(request)
+    _require_admin(session)
+
+    if username == session["username"]:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    users = auth.load_users()
+    if username not in users:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    del users[username]
+    auth.save_users(users)
+    return {"status": "deleted"}
 
 
 # ===== Static Files =====

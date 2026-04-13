@@ -3256,3 +3256,47 @@ select:focus-visible {
     align-items: center;
     gap: 6px;
 }
+
+/* ===== Auth: user panel & login styles ===== */
+.btn-sm {
+    padding: .35rem .75rem;
+    font-size: .875rem;
+}
+
+.btn-danger {
+    background: var(--color-error, #e94560);
+    color: #fff;
+    border: none;
+    border-radius: var(--border-radius, 8px);
+    cursor: pointer;
+    padding: .5rem 1rem;
+    font-size: .875rem;
+}
+
+.btn-danger:hover {
+    opacity: .85;
+}
+
+/* form-control inside modal */
+.modal-body .form-control {
+    width: 100%;
+    padding: .5rem .75rem;
+    background: var(--color-input-bg, var(--color-surface-2, #1e2a3a));
+    border: 1px solid var(--color-border, #334155);
+    border-radius: var(--border-radius, 8px);
+    color: var(--color-text, #e2e8f0);
+    font-size: .95rem;
+}
+
+.modal-body .form-control:focus {
+    outline: 2px solid var(--color-primary, #3b82f6);
+}
+
+.modal-body details summary {
+    padding: .4rem 0;
+    border-bottom: 1px solid var(--color-border, #334155);
+}
+
+.modal-body details[open] summary {
+    margin-bottom: .25rem;
+}

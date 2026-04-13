@@ -45,3 +45,6 @@ Thumbs.db
 # Backup files
 *.backup
 *-old.js
+
+# User data (auth store)
+data/
