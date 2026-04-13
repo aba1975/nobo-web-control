@@ -296,7 +296,12 @@ Manage your heating devices:
 - `POST /api/zones/{zone_id}/schedule` - Update zone weekly schedule
 
 ### Global
-- `POST /api/global/override/{mode}` - Set global override for all zones
+- `POST /api/global/override/{mode}` - Set global override for all zones (returns `source: "manual"`)
+
+### Scheduled Away Mode
+- `GET /api/global-mode/away-schedule` - Get current away schedule
+- `PUT /api/global-mode/away-schedule` - Save/update away schedule
+- `DELETE /api/global-mode/away-schedule` - Clear away schedule
 
 ### Devices
 - `GET /api/devices` - List all registered devices
@@ -461,6 +466,94 @@ The `data/` directory is created automatically on first run and is excluded from
 
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
+
+## Scheduled Away Mode
+
+You can schedule the system to automatically enter **GLOBAL Away** mode for a defined time window (e.g. while you're on holiday) and automatically return to **GLOBAL Home** when the window ends.
+
+### Feature Overview
+
+- Set a **start** and **end** date/time in ISO-8601 format
+- The scheduler checks every 30 seconds and transitions the system at the correct time
+- On server restart, if the current time is inside the window the system immediately enters Away mode
+- When the window expires the schedule is automatically disabled and Home mode is restored
+- If no schedule is set (or the schedule is disabled), manual global mode selection works exactly as before
+
+### Example Schedule
+
+Away from **2026-04-22 10:00 UTC** to **2026-05-01 13:00 UTC**:
+
+```json
+{
+  "enabled": true,
+  "start_at": "2026-04-22T10:00:00Z",
+  "end_at": "2026-05-01T13:00:00Z"
+}
+```
+
+### API Usage
+
+**Get current schedule:**
+```
+GET /api/global-mode/away-schedule
+```
+Response: `{ "enabled": bool, "start_at": "...", "end_at": "...", "currently_active": bool }`
+
+**Save/update schedule:**
+```
+PUT /api/global-mode/away-schedule
+Content-Type: application/json
+
+{ "enabled": true, "start_at": "2026-04-22T10:00:00Z", "end_at": "2026-05-01T13:00:00Z" }
+```
+- `start_at` and `end_at` must be valid ISO-8601 datetime strings with timezone offset
+- `end_at` must be strictly after `start_at`
+- If the request is made while the current time is already inside the window, Away mode is applied immediately
+- Returns `400` for invalid input
+
+**Clear schedule:**
+```
+DELETE /api/global-mode/away-schedule
+```
+- If the schedule was active at deletion time, the system switches back to Home mode
+- Returns `{ "status": "cleared" }`
+
+**`GET /api/status`** includes:
+```json
+{
+  "away_schedule": { "enabled": bool, "start_at": "...", "end_at": "...", "currently_active": bool },
+  "global_mode_source": "manual" | "schedule"
+}
+```
+
+### Datetime Format
+
+Use ISO-8601 strings with a timezone offset or `Z` suffix (UTC):
+- `"2026-04-22T10:00:00Z"` — UTC
+- `"2026-04-22T12:00:00+02:00"` — Europe/Oslo (CEST)
+
+Naive datetimes (no timezone suffix) are treated as UTC.
+
+### Behavior Rules
+
+| Situation | Effective mode |
+|-----------|----------------|
+| Schedule active (inside window) | Away (enforced every 30 s) |
+| Schedule enabled but not yet started | Manual selection works normally |
+| Schedule disabled or not set | Manual selection works normally |
+| Manual Away without a schedule | Stays Away until user selects another mode |
+
+### UI
+
+The web interface shows a collapsible **📅 Schedule Away** panel below the global mode buttons:
+- Set start/end date+time using the date pickers
+- Click **Save Schedule** to enable
+- The status line shows whether the schedule is active, upcoming, or not set
+- The Away button shows a 📅 badge when the schedule is controlling the mode
+
+### Data Storage
+
+The schedule is persisted in `data/away_schedule.json` (same directory as user credentials). The file is created automatically on first save.
 
 ## License
 

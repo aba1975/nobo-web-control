@@ -88,6 +88,24 @@
                         <strong>Eco:</strong> All zones to eco temp • 
                         <strong>Comfort:</strong> All zones to comfort temp
                     </p>
+
+                    <!-- Schedule Away -->
+                    <details class="schedule-away-panel" id="scheduleAwayPanel">
+                        <summary>📅 Schedule Away</summary>
+                        <div class="schedule-away-body">
+                            <div id="scheduleAwayStatus" class="schedule-away-status"></div>
+                            <div class="schedule-away-form">
+                                <label for="scheduleStart">Start</label>
+                                <input type="datetime-local" id="scheduleStart">
+                                <label for="scheduleEnd">End</label>
+                                <input type="datetime-local" id="scheduleEnd">
+                                <div class="schedule-away-actions">
+                                    <button class="btn btn-primary btn-sm" onclick="saveAwaySchedule()">💾 Save Schedule</button>
+                                    <button class="btn btn-secondary btn-sm" id="btnClearSchedule" onclick="clearAwaySchedule()" style="display:none">🗑 Clear Schedule</button>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </section>
 
                 <!-- Zone List -->
