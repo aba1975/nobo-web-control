@@ -8,7 +8,7 @@
     Each numbered step is self-contained and can be run independently.
 .NOTES
     Repository : https://github.com/aba1975/nobo-web-control
-    Branch     : copilot/consolidate-feature-work-from-pr-7-8-9
+    Branch     : main
     Requires   : PowerShell 5.1 or later, Git, Python 3.10+
 #>
 
@@ -17,6 +17,8 @@
 # ║  Edit these values before running any other step.           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+
 $InstallDir     = "C:\nobo-web-control"
 $PythonVersion  = "3.10"                                         # Minimum required
 $PythonExe      = $null                                          # Resolved in Step 1 (python / py / python3)
@@ -24,10 +26,10 @@ $ServerPort     = 8000
 $NoboSerial     = "111111111111"                                  # 12-digit hub serial (demo default)
 $NoboIP         = "10.0.0.100"                                   # Hub IP address
 $DemoMode       = $true                                          # $true = demo mode, $false = real hub
-$Branch         = "copilot/consolidate-feature-work-from-pr-7-8-9"
+$Branch         = "main"
 $RepoUrl        = "https://github.com/aba1975/nobo-web-control.git"
 # Fallback commit SHA — use when git checkout $Branch fails (e.g. old Git clients)
-$FallbackSHA    = "2f456b48222f2d659b52b1c2c05e39fe30b5599b"
+$FallbackSHA    = "ccf8e326f35523c8db3df09b9ba50f4a9011fa2b"
 
 Write-Host "Configuration loaded." -ForegroundColor Cyan
 Write-Host "  Install dir : $InstallDir"
@@ -99,30 +101,9 @@ try {
 }
 
 if ($allOk) {
-    Write-Host "`nAll prerequisites satisfied. Proceed to Step 2." -ForegroundColor Green
+    Write-Host "`nAll prerequisites satisfied. Proceed to Step 3 (Clone Repository)." -ForegroundColor Green
 } else {
     Write-Host "`nOne or more prerequisites are missing. Install them before continuing." -ForegroundColor Red
-}
-
-
-# ╔══════════════════════════════════════════════════════════════╗
-# ║  STEP 2 — Create Installation Directory                     ║
-# ╚══════════════════════════════════════════════════════════════╝
-
-Write-Host "`n=== Creating installation directory ===" -ForegroundColor Cyan
-
-if (Test-Path $InstallDir) {
-    Write-Host "  [WARN] Directory already exists: $InstallDir" -ForegroundColor Yellow
-    Write-Host "         If you want a clean install, delete it manually first." -ForegroundColor Yellow
-    Write-Host "         Continuing with existing directory..." -ForegroundColor Yellow
-} else {
-    try {
-        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-        Write-Host "  [OK] Created: $InstallDir" -ForegroundColor Green
-    } catch {
-        Write-Host "  [FAIL] Could not create directory: $_" -ForegroundColor Red
-        Write-Host "         Try running PowerShell as Administrator." -ForegroundColor Yellow
-    }
 }
 
 
@@ -139,7 +120,17 @@ try {
     # Step 3a — Clone the default branch (or skip if repo exists)
     if (Test-Path (Join-Path $InstallDir ".git")) {
         Write-Host "  [INFO] Git repo already exists in $InstallDir. Skipping initial clone." -ForegroundColor Yellow
+    } elseif (Test-Path $InstallDir) {
+        Write-Host "  [WARN] Directory already exists but has no .git folder: $InstallDir" -ForegroundColor Yellow
+        Write-Host "         Delete it manually for a clean install, or ensure it contains a valid repo." -ForegroundColor Yellow
+        Write-Host "         Skipping clone — proceeding with fetch/checkout on existing directory." -ForegroundColor Yellow
     } else {
+        # Ensure the parent directory exists before cloning
+        $parentDir = Split-Path $InstallDir -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+            Write-Host "  [OK] Created parent directory: $parentDir" -ForegroundColor Green
+        }
         Write-Host "  Cloning $RepoUrl into $InstallDir ..." -ForegroundColor Cyan
         $cloneOutput = & git clone $RepoUrl $InstallDir 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) { throw "git clone failed (exit code $LASTEXITCODE)`n$cloneOutput" }
@@ -241,7 +232,8 @@ $reqFile = Join-Path $InstallDir "requirements.txt"
 try {
     if (Test-Path $reqFile) {
         Write-Host "  Installing from requirements.txt ..." -ForegroundColor Cyan
-        & pip install -r $reqFile
+        $pipOutput = & pip install -r $reqFile 2>&1 | Out-String
+        Write-Host $pipOutput -ForegroundColor DarkGray
         if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements.txt failed" }
     } else {
         # Fallback: install packages individually with minimum version requirements
@@ -255,7 +247,8 @@ try {
         )
         foreach ($pkg in $packages) {
             Write-Host "  Installing $pkg ..." -ForegroundColor Cyan
-            & pip install $pkg
+            $pkgOutput = & pip install $pkg 2>&1 | Out-String
+            Write-Host $pkgOutput -ForegroundColor DarkGray
             if ($LASTEXITCODE -ne 0) { Write-Host "  [WARN] Failed to install $pkg" -ForegroundColor Yellow }
         }
     }
@@ -411,9 +404,9 @@ Write-Host "  Press Ctrl+C to stop the server.`n" -ForegroundColor Yellow
 # Start the server (blocking — runs until Ctrl+C)
 $venvPython = Join-Path $InstallDir "venv\Scripts\python.exe"
 if (Test-Path $venvPython) {
-    & $venvPython server.py
+    & $venvPython server.py 2>&1
 } elseif ($PythonExe) {
-    & $PythonExe server.py
+    & $PythonExe server.py 2>&1
 } else {
     Write-Host "  [ERROR] No Python executable found. Run Steps 1 and 4 first." -ForegroundColor Red
 }
@@ -445,7 +438,7 @@ Set-Location "$InstallDir"
 
 Write-Host "Starting Nobø Web Control on port $ServerPort ..." -ForegroundColor Cyan
 Start-Process "http://localhost:$ServerPort"
-& "$InstallDir\venv\Scripts\python.exe" server.py
+& "$InstallDir\venv\Scripts\python.exe" server.py 2>&1
 "@
 
 try {
