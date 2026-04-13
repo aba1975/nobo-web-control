@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
@@ -824,8 +824,7 @@ async def get_status():
         connected = hub_connected
 
     schedule = away_schedule.load_schedule()
-    from datetime import timezone as _tz
-    now = datetime.now(_tz.utc)
+    now = datetime.now(timezone.utc)
     currently_active = away_schedule.is_schedule_active(schedule, now)
 
     return {
@@ -1322,9 +1321,8 @@ async def set_global_override(mode: str):
 @app.get("/api/global-mode/away-schedule")
 async def get_away_schedule():
     """Return the current away schedule configuration."""
-    from datetime import timezone as _tz
     schedule = away_schedule.load_schedule()
-    now = datetime.now(_tz.utc)
+    now = datetime.now(timezone.utc)
     currently_active = away_schedule.is_schedule_active(schedule, now)
     return {
         "enabled": schedule["enabled"],
@@ -1364,8 +1362,7 @@ async def update_away_schedule(body: AwayScheduleUpdate):
     )
 
     # If enabling and we're inside the window right now, immediately switch to Away
-    from datetime import timezone as _tz
-    now = datetime.now(_tz.utc)
+    now = datetime.now(timezone.utc)
     if away_schedule.is_schedule_active(schedule, now):
         logger.info("Away schedule activated immediately (currently inside window) — entering GLOBAL Away")
         add_log_entry("sent", "Away schedule activated — entering GLOBAL Away", source="schedule")
@@ -1389,8 +1386,7 @@ async def delete_away_schedule():
     """Clear the away schedule; if it was active, return to Home mode."""
     global global_mode_source
     old_schedule = away_schedule.load_schedule()
-    from datetime import timezone as _tz
-    now = datetime.now(_tz.utc)
+    now = datetime.now(timezone.utc)
     was_active = away_schedule.is_schedule_active(old_schedule, now)
 
     away_schedule.clear_schedule()
@@ -1467,7 +1463,6 @@ async def away_schedule_loop():
     Transitions the global mode to Away when inside the window and back to
     Home when the window expires.
     """
-    from datetime import timezone as _tz
     global global_mode_source
 
     # Track the last known activation state to detect transitions
@@ -1475,7 +1470,7 @@ async def away_schedule_loop():
 
     # On startup — check immediately
     schedule = away_schedule.load_schedule()
-    now = datetime.now(_tz.utc)
+    now = datetime.now(timezone.utc)
 
     if away_schedule.is_schedule_expired(schedule, now):
         logger.info("Away schedule expired on boot — disabling schedule and ensuring Home mode")
@@ -1501,7 +1496,7 @@ async def away_schedule_loop():
         await asyncio.sleep(30)
 
         schedule = away_schedule.load_schedule()
-        now = datetime.now(_tz.utc)
+        now = datetime.now(timezone.utc)
 
         if away_schedule.is_schedule_expired(schedule, now):
             # Window just ended (or already ended)

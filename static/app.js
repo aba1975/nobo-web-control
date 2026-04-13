@@ -2111,8 +2111,9 @@ window.clearLog = clearLog;
 // ===== Away Schedule =====
 
 /**
- * Convert a datetime-local string (YYYY-MM-DDTHH:MM) to an ISO-8601 string
- * with the local timezone offset so the server receives an absolute instant.
+ * Convert a datetime-local string (YYYY-MM-DDTHH:MM — the format produced by
+ * <input type="datetime-local">) to an ISO-8601 string with the browser's local
+ * timezone offset so the server receives an absolute instant.
  */
 function localDatetimeToIso(value) {
     if (!value) return null;

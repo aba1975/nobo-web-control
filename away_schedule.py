@@ -73,7 +73,7 @@ def parse_iso_dt(value: str) -> Optional[datetime]:
     if not value:
         return None
     try:
-        dt = datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if dt.tzinfo is None:
             # Treat naive datetimes as UTC
             dt = dt.replace(tzinfo=timezone.utc)

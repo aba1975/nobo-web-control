@@ -46,7 +46,8 @@ def reset_demo_state():
 
 @pytest.fixture(scope="module")
 def client():
-    """TestClient — lifespan disabled so background tasks don't run during tests."""
+    """TestClient — background tasks in lifespan are started but the schedule loop
+    sleeps 30 s between checks so tests complete before any automatic transitions."""
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
 
