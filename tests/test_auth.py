@@ -270,7 +270,7 @@ class TestAdminUsers:
         _login(client)
         r = client.post(
             "/auth/admin/users",
-            json={"username": "testuser", "password": "pass123", "role": "user"},
+            json={"username": "testuser", "password": "pass1234", "role": "user"},
         )
         assert r.status_code == 200
 

@@ -457,14 +457,7 @@ The `data/` directory is created automatically on first run and is excluded from
 - **Session cookies** are `HttpOnly` (not accessible to JavaScript) and `SameSite=Lax` to mitigate CSRF. When the server is accessed over HTTPS, cookies are also marked `Secure`.
 - **Brute-force protection**: after 5 consecutive failed login attempts for a username, that username is locked out for 60 seconds.
 - **API and WebSocket endpoints** (`/api/*`, `/ws`) remain unauthenticated so that local integrations (e.g. Home Assistant, scripts) continue to work without modification.
-- For production deployments, place the server behind a reverse proxy (e.g. nginx) with a valid TLS certificate and set `SESSION_SECRET` as an environment variable.
-
-### Environment Variables
-
-| Variable         | Default                    | Description                                      |
-|------------------|----------------------------|--------------------------------------------------|
-| `SESSION_SECRET` | random (new on each start) | Secret used to sign sessions (set for stability) |
-
+- For production deployments, place the server behind a reverse proxy (e.g. nginx) with a valid TLS certificate.
 
 
 Contributions are welcome! Please feel free to submit issues or pull requests.

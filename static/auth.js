@@ -135,10 +135,14 @@ async function _loadAdminUsers() {
             <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem;">
                 <span style="flex:1;">${_esc(u.username)} <small style="color:var(--text-muted,#888)">(${_esc(u.role)})</small></span>
                 ${u.username !== (_currentUser && _currentUser.username)
-                    ? `<button class="btn btn-sm btn-danger" onclick="_deleteUser('${_esc(u.username)}')">🗑️</button>`
+                    ? `<button class="btn btn-sm btn-danger" data-username="${_esc(u.username)}" data-action="delete-user">🗑️</button>`
                     : '<span style="font-size:.75rem;color:var(--text-muted,#888)">(you)</span>'}
             </div>
         `).join('');
+        // Attach delete handlers via data attributes (avoids inline onclick XSS)
+        container.querySelectorAll('[data-action="delete-user"]').forEach(btn => {
+            btn.addEventListener('click', () => _deleteUser(btn.dataset.username));
+        });
     } catch (e) {
         container.textContent = 'Error: ' + e.message;
     }

@@ -2058,8 +2058,8 @@ async def auth_change_password(request: Request):
         raise HTTPException(status_code=400, detail="All password fields are required")
     if new_pw != confirm:
         raise HTTPException(status_code=400, detail="New passwords do not match")
-    if len(new_pw) < 4:
-        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    if len(new_pw) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     users = auth.load_users()
     username = session["username"]
@@ -2126,8 +2126,8 @@ async def admin_add_user(request: Request):
 
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password are required")
-    if len(password) < 4:
-        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     if role not in ("admin", "user"):
         role = "user"
 
