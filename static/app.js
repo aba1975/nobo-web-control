@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initWebSocket();
     fetchHubInfo();
     fetchZones();
+    fetchAwaySchedule();
 });
 
 // ===== Theme Toggle =====
@@ -2106,3 +2107,166 @@ window.loadLogPage = loadLogPage;
 window.setLogFilter = setLogFilter;
 window.toggleLogAutoRefresh = toggleLogAutoRefresh;
 window.clearLog = clearLog;
+
+// ===== Away Schedule =====
+
+/**
+ * Convert a datetime-local string (YYYY-MM-DDTHH:MM — the format produced by
+ * <input type="datetime-local">) to an ISO-8601 string with the browser's local
+ * timezone offset so the server receives an absolute instant.
+ */
+function localDatetimeToIso(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+}
+
+/**
+ * Format an ISO datetime string for display (using browser locale).
+ */
+function formatIsoForDisplay(isoStr) {
+    if (!isoStr) return '';
+    try {
+        return new Date(isoStr).toLocaleString();
+    } catch (_) {
+        return isoStr;
+    }
+}
+
+/**
+ * Convert an ISO datetime string to a datetime-local input value (YYYY-MM-DDTHH:MM)
+ * in local time.
+ */
+function isoToDatetimeLocal(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        // Format as YYYY-MM-DDTHH:MM in local time
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch (_) {
+        return '';
+    }
+}
+
+function renderAwayScheduleStatus(data) {
+    const statusEl = document.getElementById('scheduleAwayStatus');
+    const clearBtn = document.getElementById('btnClearSchedule');
+    const startInput = document.getElementById('scheduleStart');
+    const endInput = document.getElementById('scheduleEnd');
+
+    if (!statusEl) return;
+
+    if (data.currently_active) {
+        statusEl.innerHTML = `✅ <strong>Schedule active</strong> — Away until ${escapeHtml(formatIsoForDisplay(data.end_at))}`;
+        statusEl.style.color = 'var(--color-warning, #f59e0b)';
+        // Badge on Away button
+        const btnAway = document.getElementById('btnAway');
+        if (btnAway && !btnAway.querySelector('.schedule-badge')) {
+            const badge = document.createElement('span');
+            badge.className = 'schedule-badge';
+            badge.textContent = '📅';
+            badge.title = 'Controlled by schedule';
+            badge.style.cssText = 'font-size:0.7em;margin-left:4px;vertical-align:super;';
+            btnAway.appendChild(badge);
+        }
+    } else if (data.enabled && data.start_at) {
+        statusEl.innerHTML = `⏰ Scheduled: Away from ${escapeHtml(formatIsoForDisplay(data.start_at))} to ${escapeHtml(formatIsoForDisplay(data.end_at))}`;
+        statusEl.style.color = '';
+        // Remove badge
+        const badge = document.querySelector('#btnAway .schedule-badge');
+        if (badge) badge.remove();
+    } else {
+        statusEl.textContent = 'No schedule set';
+        statusEl.style.color = '';
+        const badge = document.querySelector('#btnAway .schedule-badge');
+        if (badge) badge.remove();
+    }
+
+    // Show/hide clear button
+    if (clearBtn) {
+        clearBtn.style.display = (data.enabled || data.start_at) ? '' : 'none';
+    }
+
+    // Populate inputs with current schedule values (local time)
+    if (startInput && data.start_at) startInput.value = isoToDatetimeLocal(data.start_at);
+    if (endInput && data.end_at) endInput.value = isoToDatetimeLocal(data.end_at);
+}
+
+async function fetchAwaySchedule() {
+    try {
+        const r = await fetch('/api/global-mode/away-schedule');
+        if (!r.ok) return;
+        const data = await r.json();
+        renderAwayScheduleStatus(data);
+    } catch (e) {
+        console.error('fetchAwaySchedule error:', e);
+    }
+}
+
+async function saveAwaySchedule() {
+    const startVal = document.getElementById('scheduleStart')?.value;
+    const endVal = document.getElementById('scheduleEnd')?.value;
+
+    if (!startVal || !endVal) {
+        showToast('Please set both start and end date/time', 'error');
+        return;
+    }
+
+    const startIso = localDatetimeToIso(startVal);
+    const endIso = localDatetimeToIso(endVal);
+
+    if (!startIso || !endIso) {
+        showToast('Invalid date/time format', 'error');
+        return;
+    }
+
+    try {
+        const r = await fetch('/api/global-mode/away-schedule', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: true, start_at: startIso, end_at: endIso }),
+        });
+        if (!r.ok) {
+            const err = await r.json();
+            throw new Error(err.detail || 'Failed to save schedule');
+        }
+        const data = await r.json();
+        renderAwayScheduleStatus(data);
+        showToast('Away schedule saved', 'success');
+        if (data.currently_active) {
+            globalMode = 'away';
+            updateGlobalModeButtons();
+            await fetchZones();
+        }
+    } catch (e) {
+        console.error('saveAwaySchedule error:', e);
+        showToast(e.message, 'error');
+    }
+}
+
+async function clearAwaySchedule() {
+    try {
+        const r = await fetch('/api/global-mode/away-schedule', { method: 'DELETE' });
+        if (!r.ok) {
+            const err = await r.json();
+            throw new Error(err.detail || 'Failed to clear schedule');
+        }
+        renderAwayScheduleStatus({ enabled: false, start_at: null, end_at: null, currently_active: false });
+        // Clear inputs
+        const startInput = document.getElementById('scheduleStart');
+        const endInput = document.getElementById('scheduleEnd');
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+        showToast('Away schedule cleared', 'info');
+        await fetchZones();
+    } catch (e) {
+        console.error('clearAwaySchedule error:', e);
+        showToast(e.message, 'error');
+    }
+}
+
+window.saveAwaySchedule = saveAwaySchedule;
+window.clearAwaySchedule = clearAwaySchedule;
+window.fetchAwaySchedule = fetchAwaySchedule;

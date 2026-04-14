@@ -10,7 +10,7 @@ import logging
 import threading
 from collections import deque
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
@@ -21,6 +21,7 @@ from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import pynobo
 import auth
+import away_schedule
 
 # Configure logging
 logging.basicConfig(
@@ -194,6 +195,9 @@ command_log: deque = deque(maxlen=500)
 # In-memory store for demo-mode schedule changes (keyed by zone_id)
 demo_schedules: Dict[str, dict] = {}
 
+# Tracks whether the current global mode was set manually or by the away schedule
+global_mode_source: str = "manual"  # "manual" | "schedule"
+
 
 def add_log_entry(direction: str, description: str, command: str = "", source: str = "api"):
     """Add an entry to the command log buffer (thread-safe)."""
@@ -295,11 +299,14 @@ async def lifespan(app: FastAPI):
     
     # Start background reconnection task (no-op in demo mode)
     reconnect_task = asyncio.create_task(reconnect_loop())
+    # Start background away-schedule checker
+    schedule_task = asyncio.create_task(away_schedule_loop())
 
     yield
     
     # Shutdown
     reconnect_task.cancel()
+    schedule_task.cancel()
     logger.info("Shutting down server...")
     # Close all websocket connections
     for ws in connected_websockets:
@@ -815,12 +822,23 @@ async def get_status():
     """Get connection status"""
     with connection_lock:
         connected = hub_connected
-    
+
+    schedule = away_schedule.load_schedule()
+    now = datetime.now(timezone.utc)
+    currently_active = away_schedule.is_schedule_active(schedule, now)
+
     return {
         "connected": connected,
         "demo_mode": DEMO_MODE,
         "hub_serial": NOBO_SERIAL if connected else None,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "away_schedule": {
+            "enabled": schedule["enabled"],
+            "start_at": schedule["start_at"],
+            "end_at": schedule["end_at"],
+            "currently_active": currently_active,
+        },
+        "global_mode_source": global_mode_source,
     }
 
 
@@ -1218,6 +1236,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
 @app.post("/api/global/override/{mode}")
 async def set_global_override(mode: str):
     """Set global override mode for all zones"""
+    global global_mode_source
     with connection_lock:
         connected = hub_connected
         current_hub = hub
@@ -1255,7 +1274,8 @@ async def set_global_override(mode: str):
                 f"[DEMO] All zones set to {mode}",
                 source="api",
             )
-            return {"status": "success", "mode": mode}
+            global_mode_source = "manual"
+            return {"status": "success", "mode": mode, "source": "manual"}
         
         # Real hub mode — use a single global override command instead of per-zone
         if not current_hub:
@@ -1289,10 +1309,231 @@ async def set_global_override(mode: str):
         # Wait for updates
         await asyncio.sleep(0.5)
         
-        return {"status": "success", "mode": mode}
+        global_mode_source = "manual"
+        return {"status": "success", "mode": mode, "source": "manual"}
     except Exception as e:
         logger.error(f"Error setting global override: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== Away Schedule Endpoints =====
+
+@app.get("/api/global-mode/away-schedule")
+async def get_away_schedule():
+    """Return the current away schedule configuration."""
+    schedule = away_schedule.load_schedule()
+    now = datetime.now(timezone.utc)
+    currently_active = away_schedule.is_schedule_active(schedule, now)
+    return {
+        "enabled": schedule["enabled"],
+        "start_at": schedule["start_at"],
+        "end_at": schedule["end_at"],
+        "currently_active": currently_active,
+    }
+
+
+class AwayScheduleUpdate(BaseModel):
+    enabled: bool
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+
+
+@app.put("/api/global-mode/away-schedule")
+async def update_away_schedule(body: AwayScheduleUpdate):
+    """Save a new away schedule configuration."""
+    global global_mode_source
+    is_valid, error_msg = away_schedule.validate_schedule(body.enabled, body.start_at, body.end_at)
+    if not is_valid:
+        logger.warning(f"Invalid away schedule input rejected: {error_msg}")
+        add_log_entry("error", f"Away schedule input rejected: {error_msg}", source="api")
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    schedule = {
+        "enabled": body.enabled,
+        "start_at": body.start_at if body.enabled else None,
+        "end_at": body.end_at if body.enabled else None,
+    }
+    away_schedule.save_schedule(schedule)
+    logger.info(f"Away schedule saved: enabled={body.enabled}, start={body.start_at}, end={body.end_at}")
+    add_log_entry(
+        "sent",
+        f"Away schedule updated: enabled={body.enabled}, start={body.start_at}, end={body.end_at}",
+        source="api",
+    )
+
+    # If enabling and we're inside the window right now, immediately switch to Away
+    now = datetime.now(timezone.utc)
+    if away_schedule.is_schedule_active(schedule, now):
+        logger.info("Away schedule activated immediately (currently inside window) — entering GLOBAL Away")
+        add_log_entry("sent", "Away schedule activated — entering GLOBAL Away", source="schedule")
+        try:
+            await _apply_global_mode_internal("away", source="schedule")
+            global_mode_source = "schedule"
+        except Exception as e:
+            logger.error(f"Error applying immediate Away on schedule save: {e}")
+
+    currently_active = away_schedule.is_schedule_active(schedule, now)
+    return {
+        "enabled": schedule["enabled"],
+        "start_at": schedule["start_at"],
+        "end_at": schedule["end_at"],
+        "currently_active": currently_active,
+    }
+
+
+@app.delete("/api/global-mode/away-schedule")
+async def delete_away_schedule():
+    """Clear the away schedule; if it was active, return to Home mode."""
+    global global_mode_source
+    old_schedule = away_schedule.load_schedule()
+    now = datetime.now(timezone.utc)
+    was_active = away_schedule.is_schedule_active(old_schedule, now)
+
+    away_schedule.clear_schedule()
+    logger.info("Away schedule cleared")
+    add_log_entry("sent", "Away schedule cleared", source="api")
+
+    if was_active:
+        logger.info("Away schedule was active — returning to GLOBAL Home")
+        add_log_entry("sent", "Away schedule cleared — returning to GLOBAL Home", source="schedule")
+        try:
+            await _apply_global_mode_internal("home", source="schedule")
+            global_mode_source = "manual"
+        except Exception as e:
+            logger.error(f"Error applying Home on schedule clear: {e}")
+
+    return {"status": "cleared"}
+
+
+async def _apply_global_mode_internal(mode: str, source: str = "schedule") -> None:
+    """
+    Internal helper to apply a global mode without going through the HTTP endpoint.
+    Used by the scheduler and schedule save/delete endpoints.
+    """
+    global global_mode_source
+    with connection_lock:
+        connected = hub_connected
+        current_hub = hub
+
+    if not connected:
+        logger.warning(f"Cannot apply global mode '{mode}': hub not connected")
+        return
+
+    if DEMO_MODE:
+        for demo_zone in DEMO_ZONES:
+            demo_zone['mode'] = 'normal' if mode == 'home' else mode
+        add_log_entry(
+            "sent",
+            f"[DEMO] Schedule: create_override(now, 0, {mode.upper()}, all zones)",
+            command=f"create_override now 0 {mode} all",
+            source=source,
+        )
+        global_mode_source = source
+        return
+
+    if not current_hub:
+        return
+
+    mode_map = {
+        'comfort': pynobo.nobo.API.OVERRIDE_MODE_COMFORT,
+        'eco': pynobo.nobo.API.OVERRIDE_MODE_ECO,
+        'away': pynobo.nobo.API.OVERRIDE_MODE_AWAY,
+        'normal': -1,
+        'home': -1,
+    }
+    if mode == 'normal' or mode == 'home':
+        current_hub.create_override(
+            pynobo.nobo.API.OVERRIDE_MODE_NORMAL,
+            pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+            pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
+        )
+    else:
+        current_hub.create_override(
+            mode_map[mode],
+            pynobo.nobo.API.OVERRIDE_TYPE_NOW,
+            pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
+        )
+    global_mode_source = source
+    await asyncio.sleep(0.5)
+
+
+async def away_schedule_loop():
+    """
+    Background task that checks the away schedule every 30 seconds.
+    Transitions the global mode to Away when inside the window and back to
+    Home when the window expires.
+    """
+    global global_mode_source
+
+    # Track the last known activation state to detect transitions
+    last_active = False
+
+    # On startup — check immediately
+    schedule = away_schedule.load_schedule()
+    now = datetime.now(timezone.utc)
+
+    if away_schedule.is_schedule_expired(schedule, now):
+        logger.info("Away schedule expired on boot — disabling schedule and ensuring Home mode")
+        add_log_entry("received", "Away schedule expired on boot — ensuring GLOBAL Home", source="schedule")
+        schedule["enabled"] = False
+        away_schedule.save_schedule(schedule)
+        try:
+            await _apply_global_mode_internal("home", source="schedule")
+            global_mode_source = "manual"
+        except Exception as e:
+            logger.error(f"Error applying Home on boot (expired schedule): {e}")
+    elif away_schedule.is_schedule_active(schedule, now):
+        logger.info("Away schedule active on boot — entering GLOBAL Away")
+        add_log_entry("received", "Away schedule active on boot — entering GLOBAL Away", source="schedule")
+        try:
+            await _apply_global_mode_internal("away", source="schedule")
+            global_mode_source = "schedule"
+        except Exception as e:
+            logger.error(f"Error applying Away on boot: {e}")
+        last_active = True
+
+    while True:
+        await asyncio.sleep(30)
+
+        schedule = away_schedule.load_schedule()
+        now = datetime.now(timezone.utc)
+
+        if away_schedule.is_schedule_expired(schedule, now):
+            # Window just ended (or already ended)
+            if last_active or schedule.get("enabled"):
+                logger.info("Away schedule ended — returning to GLOBAL Home")
+                add_log_entry("received", "Away schedule ended — returning to GLOBAL Home", source="schedule")
+                schedule["enabled"] = False
+                away_schedule.save_schedule(schedule)
+                try:
+                    await _apply_global_mode_internal("home", source="schedule")
+                    global_mode_source = "manual"
+                except Exception as e:
+                    logger.error(f"Error applying Home on schedule expiry: {e}")
+            last_active = False
+            continue
+
+        currently_active = away_schedule.is_schedule_active(schedule, now)
+
+        if currently_active and not last_active:
+            # Transition into window
+            logger.info("Away schedule activated — entering GLOBAL Away")
+            add_log_entry("received", "Away schedule activated — entering GLOBAL Away", source="schedule")
+            try:
+                await _apply_global_mode_internal("away", source="schedule")
+                global_mode_source = "schedule"
+            except Exception as e:
+                logger.error(f"Error applying Away on schedule activation: {e}")
+
+        elif currently_active and last_active:
+            # Still inside window — re-assert Away in case of manual override
+            try:
+                await _apply_global_mode_internal("away", source="schedule")
+                global_mode_source = "schedule"
+            except Exception as e:
+                logger.error(f"Error re-asserting Away during active schedule: {e}")
+
+        last_active = currently_active
 
 
 @app.get("/api/week_profiles")
