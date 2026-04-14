@@ -2111,50 +2111,75 @@ window.clearLog = clearLog;
 // ===== Away Schedule =====
 
 /**
- * Convert a datetime-local string (YYYY-MM-DDTHH:MM — the format produced by
- * <input type="datetime-local">) to an ISO-8601 string with the browser's local
- * timezone offset so the server receives an absolute instant.
- */
-function localDatetimeToIso(value) {
-    if (!value) return null;
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return null;
-    return d.toISOString();
-}
-
-/**
- * Format an ISO datetime string for display (using browser locale).
+ * Format an ISO datetime string for display as DD.MM.YYYY HH:mm (24-hour, local time).
  */
 function formatIsoForDisplay(isoStr) {
     if (!isoStr) return '';
     try {
-        return new Date(isoStr).toLocaleString();
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return isoStr;
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     } catch (_) {
         return isoStr;
     }
 }
 
 /**
- * Convert an ISO datetime string to a datetime-local input value (YYYY-MM-DDTHH:MM)
- * in local time.
+ * Extract the date part (DD.MM.YYYY) from an ISO datetime string in local time.
  */
-function isoToDatetimeLocal(isoStr) {
+function isoToDatePart(isoStr) {
     if (!isoStr) return '';
     try {
         const d = new Date(isoStr);
-        // Format as YYYY-MM-DDTHH:MM in local time
+        if (isNaN(d.getTime())) return '';
         const pad = n => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    } catch (_) {
-        return '';
-    }
+        return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+    } catch (_) { return ''; }
+}
+
+/**
+ * Extract the time part (HH:mm) from an ISO datetime string in local time.
+ */
+function isoToTimePart(isoStr) {
+    if (!isoStr) return '';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch (_) { return ''; }
+}
+
+/**
+ * Parse separate DD.MM.YYYY and HH:mm strings into an ISO-8601 string.
+ * Returns null if either input is missing or doesn't match the expected format.
+ */
+function parseDDMMYYYYHHmm(dateStr, timeStr) {
+    if (!dateStr || !timeStr) return null;
+    const dm = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    const tm = timeStr.match(/^(\d{2}):(\d{2})$/);
+    if (!dm || !tm) return null;
+    const day = parseInt(dm[1], 10);
+    const month = parseInt(dm[2], 10) - 1;
+    const year = parseInt(dm[3], 10);
+    const hour = parseInt(tm[1], 10);
+    const minute = parseInt(tm[2], 10);
+    if (month < 0 || month > 11 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+    const d = new Date(year, month, day, hour, minute, 0);
+    if (isNaN(d.getTime())) return null;
+    // Validate that the date components match what was parsed (catches e.g. 31 Feb)
+    if (d.getFullYear() !== year || d.getMonth() !== month || d.getDate() !== day) return null;
+    return d.toISOString();
 }
 
 function renderAwayScheduleStatus(data) {
     const statusEl = document.getElementById('scheduleAwayStatus');
     const clearBtn = document.getElementById('btnClearSchedule');
-    const startInput = document.getElementById('scheduleStart');
-    const endInput = document.getElementById('scheduleEnd');
+    const startDateInput = document.getElementById('scheduleStartDate');
+    const startTimeInput = document.getElementById('scheduleStartTime');
+    const endDateInput = document.getElementById('scheduleEndDate');
+    const endTimeInput = document.getElementById('scheduleEndTime');
 
     if (!statusEl) return;
 
@@ -2177,9 +2202,14 @@ function renderAwayScheduleStatus(data) {
         // Remove badge
         const badge = document.querySelector('#btnAway .schedule-badge');
         if (badge) badge.remove();
+    } else if (data.start_at) {
+        statusEl.innerHTML = `⏸ Disabled: Away from ${escapeHtml(formatIsoForDisplay(data.start_at))} to ${escapeHtml(formatIsoForDisplay(data.end_at))}`;
+        statusEl.style.color = 'var(--color-text-secondary)';
+        const badge = document.querySelector('#btnAway .schedule-badge');
+        if (badge) badge.remove();
     } else {
         statusEl.textContent = 'No schedule set';
-        statusEl.style.color = '';
+        statusEl.style.color = 'var(--color-text-secondary)';
         const badge = document.querySelector('#btnAway .schedule-badge');
         if (badge) badge.remove();
     }
@@ -2189,9 +2219,11 @@ function renderAwayScheduleStatus(data) {
         clearBtn.style.display = (data.enabled || data.start_at) ? '' : 'none';
     }
 
-    // Populate inputs with current schedule values (local time)
-    if (startInput && data.start_at) startInput.value = isoToDatetimeLocal(data.start_at);
-    if (endInput && data.end_at) endInput.value = isoToDatetimeLocal(data.end_at);
+    // Populate inputs with current schedule values (local time, DD.MM.YYYY HH:mm)
+    if (startDateInput) startDateInput.value = data.start_at ? isoToDatePart(data.start_at) : '';
+    if (startTimeInput) startTimeInput.value = data.start_at ? isoToTimePart(data.start_at) : '';
+    if (endDateInput) endDateInput.value = data.end_at ? isoToDatePart(data.end_at) : '';
+    if (endTimeInput) endTimeInput.value = data.end_at ? isoToTimePart(data.end_at) : '';
 }
 
 async function fetchAwaySchedule() {
@@ -2200,25 +2232,32 @@ async function fetchAwaySchedule() {
         if (!r.ok) return;
         const data = await r.json();
         renderAwayScheduleStatus(data);
+        // Auto-open the panel if a schedule is set (enabled or has dates)
+        const panel = document.getElementById('scheduleAwayPanel');
+        if (panel && (data.enabled || data.start_at)) {
+            panel.setAttribute('open', '');
+        }
     } catch (e) {
         console.error('fetchAwaySchedule error:', e);
     }
 }
 
 async function saveAwaySchedule() {
-    const startVal = document.getElementById('scheduleStart')?.value;
-    const endVal = document.getElementById('scheduleEnd')?.value;
+    const startDate = document.getElementById('scheduleStartDate')?.value;
+    const startTime = document.getElementById('scheduleStartTime')?.value;
+    const endDate = document.getElementById('scheduleEndDate')?.value;
+    const endTime = document.getElementById('scheduleEndTime')?.value;
 
-    if (!startVal || !endVal) {
-        showToast('Please set both start and end date/time', 'error');
+    if (!startDate || !startTime || !endDate || !endTime) {
+        showToast('Please set both start and end date/time (DD.MM.YYYY HH:mm)', 'error');
         return;
     }
 
-    const startIso = localDatetimeToIso(startVal);
-    const endIso = localDatetimeToIso(endVal);
+    const startIso = parseDDMMYYYYHHmm(startDate, startTime);
+    const endIso = parseDDMMYYYYHHmm(endDate, endTime);
 
     if (!startIso || !endIso) {
-        showToast('Invalid date/time format', 'error');
+        showToast('Invalid date/time format. Use DD.MM.YYYY and HH:mm', 'error');
         return;
     }
 
@@ -2255,10 +2294,10 @@ async function clearAwaySchedule() {
         }
         renderAwayScheduleStatus({ enabled: false, start_at: null, end_at: null, currently_active: false });
         // Clear inputs
-        const startInput = document.getElementById('scheduleStart');
-        const endInput = document.getElementById('scheduleEnd');
-        if (startInput) startInput.value = '';
-        if (endInput) endInput.value = '';
+        ['scheduleStartDate', 'scheduleStartTime', 'scheduleEndDate', 'scheduleEndTime'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         showToast('Away schedule cleared', 'info');
         await fetchZones();
     } catch (e) {

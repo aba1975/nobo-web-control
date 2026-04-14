@@ -95,10 +95,17 @@
                         <div class="schedule-away-body">
                             <div id="scheduleAwayStatus" class="schedule-away-status"></div>
                             <div class="schedule-away-form">
-                                <label for="scheduleStart">Start</label>
-                                <input type="datetime-local" id="scheduleStart">
-                                <label for="scheduleEnd">End</label>
-                                <input type="datetime-local" id="scheduleEnd">
+                                <label for="scheduleStartDate">Start</label>
+                                <div class="schedule-datetime-group">
+                                    <input type="text" id="scheduleStartDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input">
+                                    <input type="text" id="scheduleStartTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="Start time">
+                                </div>
+                                <label for="scheduleEndDate">End</label>
+                                <div class="schedule-datetime-group">
+                                    <input type="text" id="scheduleEndDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input">
+                                    <input type="text" id="scheduleEndTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="End time">
+                                </div>
+                                <p class="schedule-away-help">Format: DD.MM.YYYY HH:mm (24-hour)</p>
                                 <div class="schedule-away-actions">
                                     <button class="btn btn-primary btn-sm" onclick="saveAwaySchedule()">💾 Save Schedule</button>
                                     <button class="btn btn-secondary btn-sm" id="btnClearSchedule" onclick="clearAwaySchedule()" style="display:none">🗑 Clear Schedule</button>

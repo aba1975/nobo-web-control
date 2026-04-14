@@ -2607,15 +2607,36 @@ select:focus-visible {
     white-space: nowrap;
 }
 
-.schedule-away-form input[type="datetime-local"] {
+.schedule-datetime-group {
+    display: flex;
+    gap: 8px;
+}
+
+.schedule-date-input,
+.schedule-time-input {
     padding: 6px 10px;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-input-bg, var(--color-surface));
+    border-radius: var(--radius-sm, var(--border-radius-sm));
+    background: var(--color-input-bg, var(--color-surface, var(--color-card-bg)));
     color: var(--color-text-primary);
     font-size: var(--text-sm);
-    width: 100%;
-    color-scheme: dark;
+    font-family: var(--font-mono);
+    text-align: center;
+}
+
+.schedule-date-input {
+    width: 120px;
+}
+
+.schedule-time-input {
+    width: 70px;
+}
+
+.schedule-away-help {
+    grid-column: 1 / -1;
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-secondary);
+    margin: 0;
 }
 
 .schedule-away-actions {
