@@ -57,16 +57,40 @@ The system supports **23 unique device models** across 26 serial number prefixes
 
 ```
 nobo-web-control/
-├── server.py              # FastAPI backend using pynobo
+├── server.py                          # FastAPI backend using pynobo
+├── auth.py                            # Session-based authentication module
+├── away_schedule.py                   # Away schedule persistence & helpers
 ├── static/
-│   ├── index.html         # Main webpage with 3-page navigation
-│   ├── style.css          # Styling (Mill-app inspired, card-based)
-│   ├── app.js             # Frontend logic + WebSocket for live updates
-│   └── images/
-│       ├── ntb-2r.svg     # NTB-2R device image
-│       └── r80-rdc-700.svg # R80 RDC 700 device image
-├── requirements.txt       # Python dependencies
-└── README.md              # This file
+│   ├── index.html                     # Main webpage with 3-page navigation
+│   ├── style.css                      # Styling (Mill-app inspired, card-based)
+│   ├── app.js                         # Frontend logic + WebSocket for live updates
+│   ├── auth.js                        # Authentication UI (user panel, admin)
+│   └── images/                        # Device images (PNG + SVG per model)
+│       ├── NTB-2R.png                 # NTB-2R thermostat
+│       ├── R80-RDC-700.png            # R80 RDC 700 panel heater receiver
+│       ├── NCU-2R.png                 # NCU-2R controller
+│       ├── DCU-2R.png                 # DCU-2R controller
+│       ├── 2NC9-700.png               # 2NC9 700
+│       ├── ... (23 device models)     # PNG + SVG for each supported device
+│       └── placeholder.svg            # Fallback for unknown devices
+├── data/                              # Runtime data (gitignored)
+│   ├── users.json                     # User accounts (created at first run)
+│   └── away_schedule.json             # Persisted away schedule
+├── tests/
+│   ├── conftest.py                    # Shared pytest fixtures (demo mode)
+│   ├── test_server.py                 # Unit tests for server helpers
+│   ├── test_api.py                    # API endpoint integration tests
+│   ├── test_devices.py                # Device management tests
+│   ├── test_serial_validation.py      # Serial number validation tests
+│   ├── test_auth.py                   # Authentication tests
+│   └── test_away_schedule.py          # Away schedule feature tests
+├── Deploy-NoboWebControl.ps1          # Windows deployment script
+├── Redeploy-NoboWebControl.ps1        # Windows redeployment script
+├── Remove-NoboWebControl.ps1          # Windows removal/cleanup script
+├── API_Nobo.pdf                       # Nobø Hub API reference
+├── Manual_Nobo.pdf                    # Nobø Hub user manual
+├── requirements.txt                   # Python dependencies
+└── README.md                          # This file
 ```
 
 ## Prerequisites
