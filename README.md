@@ -528,11 +528,18 @@ DELETE /api/global-mode/away-schedule
 
 ### Datetime Format
 
-Use ISO-8601 strings with a timezone offset or `Z` suffix (UTC):
+**API (server-side):** Use ISO-8601 strings with a timezone offset or `Z` suffix (UTC):
 - `"2026-04-22T10:00:00Z"` — UTC
 - `"2026-04-22T12:00:00+02:00"` — Europe/Oslo (CEST)
 
 Naive datetimes (no timezone suffix) are treated as UTC.
+
+**UI (browser):** Dates and times are displayed and entered in Norwegian convention:
+- Date: `DD.MM.YYYY` (e.g., `22.04.2026`)
+- Time: 24-hour `HH:mm` (e.g., `10:00`)
+- Combined display: `22.04.2026 10:00`
+
+The UI converts between the display format (DD.MM.YYYY HH:mm) and ISO-8601 transparently; the API always uses ISO timestamps.
 
 ### Behavior Rules
 
@@ -546,9 +553,11 @@ Naive datetimes (no timezone suffix) are treated as UTC.
 ### UI
 
 The web interface shows a collapsible **📅 Schedule Away** panel below the global mode buttons:
-- Set start/end date+time using the date pickers
+- Enter start/end date and time in separate fields using the format `DD.MM.YYYY` and `HH:mm`
+  - Example: Start `22.04.2026` `10:00`, End `01.05.2026` `13:00`
 - Click **Save Schedule** to enable
-- The status line shows whether the schedule is active, upcoming, or not set
+- The panel auto-opens on page load when a schedule exists
+- The status line shows whether the schedule is active, upcoming, disabled, or not set
 - The Away button shows a 📅 badge when the schedule is controlling the mode
 
 ### Data Storage
