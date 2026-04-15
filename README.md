@@ -60,6 +60,7 @@ nobo-web-control/
 ├── server.py                          # FastAPI backend using pynobo
 ├── auth.py                            # Session-based authentication module
 ├── away_schedule.py                   # Away schedule persistence & helpers
+├── config_persistence.py              # Demo-zone / schedule / server-state persistence
 ├── static/
 │   ├── index.html                     # Main webpage with 3-page navigation
 │   ├── style.css                      # Styling (Mill-app inspired, card-based)
@@ -75,7 +76,17 @@ nobo-web-control/
 │       └── placeholder.svg            # Fallback for unknown devices
 ├── data/                              # Runtime data (gitignored)
 │   ├── users.json                     # User accounts (created at first run)
-│   └── away_schedule.json             # Persisted away schedule
+│   ├── away_schedule.json             # Persisted away schedule
+│   ├── demo_zones.json                # Persisted zone configuration (demo mode)
+│   ├── demo_schedules.json            # Persisted weekly schedules (demo mode)
+│   └── server_state.json              # Persisted global_mode_source
+├── scripts/
+│   ├── install-service.ps1            # Install as Windows Service (NSSM)
+│   ├── uninstall-service.ps1          # Remove Windows Service
+│   ├── install-task.ps1               # Install as Task Scheduler task
+│   └── uninstall-task.ps1             # Remove Task Scheduler task
+├── docs/
+│   └── windows-autostart.md           # Windows auto-start setup guide
 ├── tests/
 │   ├── conftest.py                    # Shared pytest fixtures (demo mode)
 │   ├── test_server.py                 # Unit tests for server helpers
@@ -83,7 +94,8 @@ nobo-web-control/
 │   ├── test_devices.py                # Device management tests
 │   ├── test_serial_validation.py      # Serial number validation tests
 │   ├── test_auth.py                   # Authentication tests
-│   └── test_away_schedule.py          # Away schedule feature tests
+│   ├── test_away_schedule.py          # Away schedule feature tests
+│   └── test_persistence.py            # Config persistence tests
 ├── Deploy-NoboWebControl.ps1          # Windows deployment script
 ├── Redeploy-NoboWebControl.ps1        # Windows redeployment script
 ├── Remove-NoboWebControl.ps1          # Windows removal/cleanup script
@@ -587,6 +599,49 @@ The web interface shows a collapsible **📅 Schedule Away** panel below the glo
 ### Data Storage
 
 The schedule is persisted in `data/away_schedule.json` (same directory as user credentials). The file is created automatically on first save.
+
+## Windows Auto-Start
+
+To make the server start automatically after a Windows reboot (e.g., Windows Update restart),
+use one of the scripts in the `scripts/` directory.
+
+> **Full documentation**: [`docs/windows-autostart.md`](docs/windows-autostart.md)
+
+### Quick Start — Windows Service (Recommended)
+
+```powershell
+# Open PowerShell as Administrator, then:
+cd C:\path\to\nobo-web-control
+
+# Install in demo mode
+.\scripts\install-service.ps1
+
+# Install with a real hub
+.\scripts\install-service.ps1 -NoboSerial "123456789012" -NoboIp "192.168.1.100"
+```
+
+This creates a Windows Service named **NoboWebControl** that:
+- Starts automatically at boot (no login needed)
+- Restarts on failure after 5 seconds
+- Logs to `logs\nobo-stdout.log` and `logs\nobo-stderr.log`
+
+To remove the service:
+
+```powershell
+.\scripts\uninstall-service.ps1
+```
+
+### Alternative — Task Scheduler
+
+```powershell
+.\scripts\install-task.ps1          # install
+.\scripts\uninstall-task.ps1        # remove
+```
+
+See [`docs/windows-autostart.md`](docs/windows-autostart.md) for full setup steps,
+how to verify the server is running after a reboot, and troubleshooting.
+
+---
 
 ## License
 
