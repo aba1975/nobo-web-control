@@ -69,6 +69,7 @@ function initAwayScheduleInputFormatters() {
     dateIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
+            el.setAttribute('inputmode', 'numeric');
             el.addEventListener('input', function() {
                 const pos = this.selectionStart;
                 const oldLen = this.value.length;
@@ -83,6 +84,7 @@ function initAwayScheduleInputFormatters() {
     timeIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
+            el.setAttribute('inputmode', 'numeric');
             el.addEventListener('input', function() {
                 const pos = this.selectionStart;
                 const oldLen = this.value.length;
@@ -2238,7 +2240,41 @@ function parseDDMMYYYYHHmm(dateStr, timeStr) {
     return d.toISOString();
 }
 
-function renderAwayScheduleStatus(data) {
+/**
+ * Validate and parse separate DD.MM.YYYY and HH:mm strings into an ISO-8601 string.
+ * Returns { iso: string, error: null } on success, or { iso: null, error: string } on failure.
+ */
+function validateAndParseLocalDDMMYYYYHHmmToIso(dateStr, timeStr) {
+    if (!dateStr || !dateStr.trim()) return { iso: null, error: 'Date is empty' };
+    if (!timeStr || !timeStr.trim()) return { iso: null, error: 'Time is empty' };
+    dateStr = dateStr.trim();
+    timeStr = timeStr.trim();
+
+    const dm = dateStr.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!dm) return { iso: null, error: 'Date must be DD.MM.YYYY (got: ' + dateStr + ')' };
+
+    const tm = timeStr.match(/^(\d{2}):(\d{2})$/);
+    if (!tm) return { iso: null, error: 'Time must be HH:mm (got: ' + timeStr + ')' };
+
+    const day = parseInt(dm[1], 10);
+    const month = parseInt(dm[2], 10) - 1;
+    const year = parseInt(dm[3], 10);
+    const hour = parseInt(tm[1], 10);
+    const minute = parseInt(tm[2], 10);
+
+    if (hour > 23 || minute > 59) return { iso: null, error: 'Invalid time: hours 0-23, minutes 0-59' };
+    if (month < 0 || month > 11) return { iso: null, error: 'Invalid month: must be 01-12' };
+    if (day < 1 || day > 31) return { iso: null, error: 'Invalid day: must be 01-31' };
+
+    const d = new Date(year, month, day, hour, minute, 0);
+    if (isNaN(d.getTime())) return { iso: null, error: 'Invalid date' };
+    if (d.getFullYear() !== year || d.getMonth() !== month || d.getDate() !== day) {
+        return { iso: null, error: 'Invalid date (e.g. Feb 30 does not exist)' };
+    }
+    return { iso: d.toISOString(), error: null };
+}
+
+
     const statusEl = document.getElementById('scheduleAwayStatus');
     const clearBtn = document.getElementById('btnClearSchedule');
     const startDateInput = document.getElementById('scheduleStartDate');
@@ -2308,21 +2344,32 @@ async function fetchAwaySchedule() {
 }
 
 async function saveAwaySchedule() {
-    const startDate = document.getElementById('scheduleStartDate')?.value;
-    const startTime = document.getElementById('scheduleStartTime')?.value;
-    const endDate = document.getElementById('scheduleEndDate')?.value;
-    const endTime = document.getElementById('scheduleEndTime')?.value;
+    const startDateEl = document.getElementById('scheduleStartDate');
+    const startTimeEl = document.getElementById('scheduleStartTime');
+    const endDateEl = document.getElementById('scheduleEndDate');
+    const endTimeEl = document.getElementById('scheduleEndTime');
+
+    const startDate = startDateEl ? startDateEl.value.trim() : '';
+    const startTime = startTimeEl ? startTimeEl.value.trim() : '';
+    const endDate = endDateEl ? endDateEl.value.trim() : '';
+    const endTime = endTimeEl ? endTimeEl.value.trim() : '';
+
+    console.log('saveAwaySchedule values:', { startDate, startTime, endDate, endTime });
 
     if (!startDate || !startTime || !endDate || !endTime) {
         showToast('Please set both start and end date/time (DD.MM.YYYY HH:mm)', 'error');
         return;
     }
 
-    const startIso = parseDDMMYYYYHHmm(startDate, startTime);
-    const endIso = parseDDMMYYYYHHmm(endDate, endTime);
+    const startResult = validateAndParseLocalDDMMYYYYHHmmToIso(startDate, startTime);
+    if (!startResult.iso) {
+        showToast('Invalid start: ' + startResult.error, 'error');
+        return;
+    }
 
-    if (!startIso || !endIso) {
-        showToast('Invalid date/time format. Use DD.MM.YYYY and HH:mm', 'error');
+    const endResult = validateAndParseLocalDDMMYYYYHHmmToIso(endDate, endTime);
+    if (!endResult.iso) {
+        showToast('Invalid end: ' + endResult.error, 'error');
         return;
     }
 
@@ -2330,7 +2377,7 @@ async function saveAwaySchedule() {
         const r = await fetch('/api/global-mode/away-schedule', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: true, start_at: startIso, end_at: endIso }),
+            body: JSON.stringify({ enabled: true, start_at: startResult.iso, end_at: endResult.iso }),
         });
         if (!r.ok) {
             const err = await r.json();

@@ -97,13 +97,13 @@
                             <div class="schedule-away-form">
                                 <label for="scheduleStartDate">Start</label>
                                 <div class="schedule-datetime-group">
-                                    <input type="text" id="scheduleStartDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input">
-                                    <input type="text" id="scheduleStartTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="Start time">
+                                    <input type="text" id="scheduleStartDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input" inputmode="numeric">
+                                    <input type="text" id="scheduleStartTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="Start time" inputmode="numeric">
                                 </div>
                                 <label for="scheduleEndDate">End</label>
                                 <div class="schedule-datetime-group">
-                                    <input type="text" id="scheduleEndDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input">
-                                    <input type="text" id="scheduleEndTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="End time">
+                                    <input type="text" id="scheduleEndDate" placeholder="DD.MM.YYYY" maxlength="10" class="schedule-date-input" inputmode="numeric">
+                                    <input type="text" id="scheduleEndTime" placeholder="HH:mm" maxlength="5" class="schedule-time-input" aria-label="End time" inputmode="numeric">
                                 </div>
                                 <p class="schedule-away-help">Format: DD.MM.YYYY HH:mm (24-hour)</p>
                                 <div class="schedule-away-actions">
@@ -303,7 +303,7 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2"></script>
     <script src="/static/auth.js"></script>
 </body>
 </html>
