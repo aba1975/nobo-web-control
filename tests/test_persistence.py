@@ -234,9 +234,8 @@ class TestAtomicWrite:
     def test_no_tmp_file_left_after_successful_save(self, tmp_path, monkeypatch):
         """After a successful save the .tmp file must not remain on disk."""
         dest = tmp_path / "demo_zones.json"
-        tmp_path2 = tmp_path
         monkeypatch.setattr(config_persistence, "DEMO_ZONES_FILE", dest)
-        monkeypatch.setattr(config_persistence, "DATA_DIR", tmp_path2)
+        monkeypatch.setattr(config_persistence, "DATA_DIR", tmp_path)
 
         config_persistence.save_demo_zones(_sample_zones())
         assert not (tmp_path / "demo_zones.tmp").exists()
