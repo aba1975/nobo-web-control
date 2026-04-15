@@ -19,9 +19,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel
+import copy
 import pynobo
 import auth
 import away_schedule
+import config_persistence
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +44,8 @@ DEMO_MODE = os.environ.get('NOBO_DEMO', '').lower() in ('true', '1', 'yes') or N
 DEMO_SOFTWARE_VERSION = "1.4.0 (Simulated)"  # Software version shown in demo mode
 
 # Demo mode zone data - 8 grouped zones with realistic Norwegian indoor temperatures
-DEMO_ZONES = [
+# Hardcoded defaults (used on first run or if the persisted file is missing/corrupt).
+_DEFAULT_DEMO_ZONES = [
     {
         "zone_id": "1",
         "name": "Large Bathroom",
@@ -149,6 +152,17 @@ DEMO_ZONES = [
     },
 ]
 
+# Load persisted demo zones from disk, falling back to the hardcoded defaults on first run
+# or when the persisted file is missing/corrupt.  DEMO_ZONES is always the same list
+# object so in-place mutations (append / remove / clear+extend in tests) work correctly.
+_loaded_zones = config_persistence.load_demo_zones()
+if _loaded_zones is not None:
+    DEMO_ZONES: list = _loaded_zones
+    logger.info("Demo zones: loaded from %s", config_persistence.DEMO_ZONES_FILE)
+else:
+    DEMO_ZONES = copy.deepcopy(_DEFAULT_DEMO_ZONES)
+    logger.info("Demo zones: using hardcoded defaults (no persisted store found)")
+
 # Away temperature (set by Nobø, not configurable)
 AWAY_TEMPERATURE = 7.0
 
@@ -192,11 +206,14 @@ log_lock = threading.Lock()  # Lock for thread-safe command log access
 # Command log buffer — keeps the last 500 entries
 command_log: deque = deque(maxlen=500)
 
-# In-memory store for demo-mode schedule changes (keyed by zone_id)
-demo_schedules: Dict[str, dict] = {}
+# In-memory store for demo-mode schedule changes (keyed by zone_id).
+# Populated from disk on startup; persisted to disk on every write.
+demo_schedules: Dict[str, dict] = config_persistence.load_demo_schedules()
 
-# Tracks whether the current global mode was set manually or by the away schedule
-global_mode_source: str = "manual"  # "manual" | "schedule"
+# Tracks whether the current global mode was set manually or by the away schedule.
+# Loaded from disk on startup; persisted to disk on every change.
+_server_state = config_persistence.load_server_state()
+global_mode_source: str = _server_state.get("global_mode_source", "manual")  # "manual" | "schedule"
 
 
 def add_log_entry(direction: str, description: str, command: str = "", source: str = "api"):
@@ -289,7 +306,14 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     global main_event_loop
     # Startup
-    logger.info("Starting Nobø Web Control Server...")
+    mode_label = "demo" if DEMO_MODE else "production"
+    logger.info("Starting Nobø Web Control Server — mode=%s", mode_label)
+    logger.info(
+        "Config data dir: %s  |  demo_zones=%s  |  global_mode_source=%s",
+        config_persistence.DATA_DIR,
+        "loaded from disk" if config_persistence.DEMO_ZONES_FILE.exists() else "defaults",
+        global_mode_source,
+    )
     main_event_loop = asyncio.get_running_loop()
     try:
         await connect_to_hub()
@@ -926,6 +950,7 @@ async def add_zone(zone: ZoneAdd):
                 "override_id": None,
             })
             logger.info(f"Demo mode: Zone '{zone.name}' created with id {new_id}")
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "zone_id": new_id, "name": zone.name}
 
         # Real hub mode - not yet implemented
@@ -966,6 +991,7 @@ async def update_zone(zone_id: str, update: ZoneUpdate):
                 source="api",
             )
             logger.info(f"Demo mode: Zone {zone_id} updated")
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "zone_id": zone_id, "name": demo_zone['name'], "icon": demo_zone['icon']}
 
         # Real hub mode — icon is stored locally only (pynobo doesn't support icons)
@@ -1021,6 +1047,7 @@ async def delete_zone(zone_id: str):
                 source="api",
             )
             logger.info(f"Demo mode: Zone '{zone_name}' deleted")
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "zone_id": zone_id}
 
         # Real hub mode — not yet implemented
@@ -1073,6 +1100,7 @@ async def set_zone_override(zone_id: str, mode: str):
                 f"[DEMO] Zone '{demo_zone['name']}' mode set to {mode}",
                 source="api",
             )
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "zone_id": zone_id, "mode": mode}
         
         # Real hub mode
@@ -1167,6 +1195,7 @@ async def set_zone_temperature(zone_id: str, temps: TemperatureUpdate):
                 command=f"update_zone {zone_id} comfort={temps.comfort} eco={temps.eco}",
                 source="api",
             )
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "zone_id": zone_id, "comfort": temps.comfort, "eco": temps.eco}
         
         # Real hub mode
@@ -1275,6 +1304,8 @@ async def set_global_override(mode: str):
                 source="api",
             )
             global_mode_source = "manual"
+            config_persistence.save_demo_zones(DEMO_ZONES)
+            config_persistence.save_server_state({"global_mode_source": global_mode_source})
             return {"status": "success", "mode": mode, "source": "manual"}
         
         # Real hub mode — use a single global override command instead of per-zone
@@ -1310,6 +1341,7 @@ async def set_global_override(mode: str):
         await asyncio.sleep(0.5)
         
         global_mode_source = "manual"
+        config_persistence.save_server_state({"global_mode_source": global_mode_source})
         return {"status": "success", "mode": mode, "source": "manual"}
     except Exception as e:
         logger.error(f"Error setting global override: {e}")
@@ -1369,6 +1401,7 @@ async def update_away_schedule(body: AwayScheduleUpdate):
         try:
             await _apply_global_mode_internal("away", source="schedule")
             global_mode_source = "schedule"
+            config_persistence.save_server_state({"global_mode_source": global_mode_source})
         except Exception as e:
             logger.error(f"Error applying immediate Away on schedule save: {e}")
 
@@ -1399,6 +1432,7 @@ async def delete_away_schedule():
         try:
             await _apply_global_mode_internal("home", source="schedule")
             global_mode_source = "manual"
+            config_persistence.save_server_state({"global_mode_source": global_mode_source})
         except Exception as e:
             logger.error(f"Error applying Home on schedule clear: {e}")
 
@@ -1429,6 +1463,8 @@ async def _apply_global_mode_internal(mode: str, source: str = "schedule") -> No
             source=source,
         )
         global_mode_source = source
+        config_persistence.save_demo_zones(DEMO_ZONES)
+        config_persistence.save_server_state({"global_mode_source": global_mode_source})
         return
 
     if not current_hub:
@@ -1454,6 +1490,7 @@ async def _apply_global_mode_internal(mode: str, source: str = "schedule") -> No
             pynobo.nobo.API.OVERRIDE_TARGET_GLOBAL,
         )
     global_mode_source = source
+    config_persistence.save_server_state({"global_mode_source": global_mode_source})
     await asyncio.sleep(0.5)
 
 
@@ -1480,6 +1517,7 @@ async def away_schedule_loop():
         try:
             await _apply_global_mode_internal("home", source="schedule")
             global_mode_source = "manual"
+            config_persistence.save_server_state({"global_mode_source": global_mode_source})
         except Exception as e:
             logger.error(f"Error applying Home on boot (expired schedule): {e}")
     elif away_schedule.is_schedule_active(schedule, now):
@@ -1488,6 +1526,7 @@ async def away_schedule_loop():
         try:
             await _apply_global_mode_internal("away", source="schedule")
             global_mode_source = "schedule"
+            config_persistence.save_server_state({"global_mode_source": global_mode_source})
         except Exception as e:
             logger.error(f"Error applying Away on boot: {e}")
         last_active = True
@@ -1508,6 +1547,7 @@ async def away_schedule_loop():
                 try:
                     await _apply_global_mode_internal("home", source="schedule")
                     global_mode_source = "manual"
+                    config_persistence.save_server_state({"global_mode_source": global_mode_source})
                 except Exception as e:
                     logger.error(f"Error applying Home on schedule expiry: {e}")
             last_active = False
@@ -1522,6 +1562,7 @@ async def away_schedule_loop():
             try:
                 await _apply_global_mode_internal("away", source="schedule")
                 global_mode_source = "schedule"
+                config_persistence.save_server_state({"global_mode_source": global_mode_source})
             except Exception as e:
                 logger.error(f"Error applying Away on schedule activation: {e}")
 
@@ -1530,6 +1571,7 @@ async def away_schedule_loop():
             try:
                 await _apply_global_mode_internal("away", source="schedule")
                 global_mode_source = "schedule"
+                config_persistence.save_server_state({"global_mode_source": global_mode_source})
             except Exception as e:
                 logger.error(f"Error re-asserting Away during active schedule: {e}")
 
@@ -1658,6 +1700,7 @@ async def update_zone_schedule(zone_id: str, schedule: ScheduleUpdate):
                 for day, blocks in schedule.schedule.items()
             }
             logger.info(f"Demo mode: Schedule updated for zone {zone_id}")
+            config_persistence.save_demo_schedules(demo_schedules)
             return {"status": "success", "zone_id": zone_id, "message": "Schedule updated (demo mode)"}
         
         # Real hub mode - update week profile using pynobo
@@ -1764,7 +1807,7 @@ async def add_device(device: DeviceAdd):
                 demo_zone['component_names'] = [''] * (len(demo_zone['components']) - 1)
             demo_zone['component_names'].append(device.name or '')
             logger.info(f"Demo mode: Device {serial} added to zone {device.zone_id}")
-            
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {
                 "status": "success",
                 "serial": serial,
@@ -1823,6 +1866,7 @@ async def rename_device(serial: str, body: DeviceRename):
                         demo_zone['component_names'] = [''] * len(demo_zone['components'])
                     demo_zone['component_names'][idx] = new_name
                     logger.info(f"Demo mode: Device {clean_serial} renamed to '{new_name}'")
+                    config_persistence.save_demo_zones(DEMO_ZONES)
                     return {"status": "success", "serial": clean_serial, "name": new_name}
             raise HTTPException(status_code=404, detail="Device not found")
 
@@ -1896,7 +1940,7 @@ async def replace_device(serial: str, replacement: DeviceReplace):
                 )
             src_zone['components'][idx] = new_serial
             logger.info(f"Demo mode: Device {old_serial} replaced with {new_serial} in zone {src_zone['zone_id']}")
-
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {
                 "status": "success",
                 "old_serial": old_serial,
@@ -1953,6 +1997,7 @@ async def remove_device(serial: str):
             if not found:
                 raise HTTPException(status_code=404, detail="Device not found")
             
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {"status": "success", "serial": serial_clean}
         
         # Real hub mode
@@ -2025,6 +2070,7 @@ async def move_device(serial: str, move: DeviceMove):
                 f"Demo mode: Device {serial_clean} moved from zone {src_zone['zone_id']} "
                 f"to zone {dst_zone['zone_id']}"
             )
+            config_persistence.save_demo_zones(DEMO_ZONES)
             return {
                 "status": "success",
                 "serial": serial_clean,
