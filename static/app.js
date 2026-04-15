@@ -59,6 +59,42 @@ function deviceImageTag(serial, altText, cssClass) {
     return `<img src="/static/images/${slug}.png" alt="${escapeHtml(alt)}"${cls} onerror="this.onerror=null;this.src='/static/images/${slugLower}.svg';this.onerror=function(){this.src='/static/images/placeholder.svg';};">`;
 }
 
+/**
+ * Attach auto-formatting listeners to the away-schedule date/time inputs.
+ */
+function initAwayScheduleInputFormatters() {
+    const dateIds = ['scheduleStartDate', 'scheduleEndDate'];
+    const timeIds = ['scheduleStartTime', 'scheduleEndTime'];
+
+    dateIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', function() {
+                const pos = this.selectionStart;
+                const oldLen = this.value.length;
+                this.value = normalizeDateDigitsToDDMMYYYY(this.value);
+                const newLen = this.value.length;
+                const newPos = pos + (newLen - oldLen);
+                this.setSelectionRange(newPos, newPos);
+            });
+        }
+    });
+
+    timeIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', function() {
+                const pos = this.selectionStart;
+                const oldLen = this.value.length;
+                this.value = normalizeTimeDigitsToHHmm(this.value);
+                const newLen = this.value.length;
+                const newPos = pos + (newLen - oldLen);
+                this.setSelectionRange(newPos, newPos);
+            });
+        }
+    });
+}
+
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Nobø Control - Initializing...');
@@ -68,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchHubInfo();
     fetchZones();
     fetchAwaySchedule();
+    initAwayScheduleInputFormatters();
 });
 
 // ===== Theme Toggle =====
@@ -2149,6 +2186,34 @@ function isoToTimePart(isoStr) {
         const pad = n => String(n).padStart(2, '0');
         return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     } catch (_) { return ''; }
+}
+
+/**
+ * Auto-format a date input value as DD.MM.YYYY while typing.
+ * Strips non-digits, limits to 8 digits, inserts dots at positions 2 and 4.
+ */
+function normalizeDateDigitsToDDMMYYYY(value) {
+    let digits = value.replace(/\D/g, '').slice(0, 8);
+    let result = '';
+    for (let i = 0; i < digits.length; i++) {
+        if (i === 2 || i === 4) result += '.';
+        result += digits[i];
+    }
+    return result;
+}
+
+/**
+ * Auto-format a time input value as HH:mm while typing.
+ * Strips non-digits, limits to 4 digits, inserts colon at position 2.
+ */
+function normalizeTimeDigitsToHHmm(value) {
+    let digits = value.replace(/\D/g, '').slice(0, 4);
+    let result = '';
+    for (let i = 0; i < digits.length; i++) {
+        if (i === 2) result += ':';
+        result += digits[i];
+    }
+    return result;
 }
 
 /**
