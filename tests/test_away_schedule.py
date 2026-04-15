@@ -181,6 +181,21 @@ class TestGetAwaySchedule:
         assert body["enabled"] is True
         assert body["start_at"] == "2026-04-22T10:00:00Z"
 
+    def test_returns_disabled_schedule_with_dates(self, client):
+        """A disabled schedule that still has dates should return them."""
+        aws.save_schedule({
+            "enabled": False,
+            "start_at": "2026-04-22T10:00:00Z",
+            "end_at": "2026-05-01T13:00:00Z",
+        })
+        r = client.get("/api/global-mode/away-schedule")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is False
+        assert body["start_at"] == "2026-04-22T10:00:00Z"
+        assert body["end_at"] == "2026-05-01T13:00:00Z"
+        assert body["currently_active"] is False
+
 
 # ---------------------------------------------------------------------------
 # PUT /api/global-mode/away-schedule
