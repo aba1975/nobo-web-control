@@ -1,3 +1,7 @@
+# !!THIS IS NOT A RECOMMENDED DEPLOYMENT. NOT TESTED AGAINST REAL HUB AND USING WINDOWS WHICH IS NOT OPTIMAL!!
+
+# !!PLEASE REFER TO/ USE "Nobo_Raspberry_PI" REPOSITORY FOR WORKING SYSTEM!!
+
 # Nobø Energy Hub Local Control
 
 A modern, web-based control system for the Nobø Energy Hub, providing local control of your heating system through an intuitive interface inspired by the Mill heating app.
